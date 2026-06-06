@@ -121,6 +121,45 @@ uploading → processing → reviewing → delivered
 5. Path-based routing `splatter.mx/tour/slug` — subdominios del cliente = DNS pain
 6. Self-hosted viewers: supersplat-viewer (npm) para dashboard, Spark para mobile
 
+## Estado del build (commit 167805e)
+
+### Lo que está construido y funciona
+| Archivo | Qué hace |
+|---|---|
+| `src/app/page.tsx` | Lista de proyectos con Supabase Realtime |
+| `src/app/nuevo/page.tsx` | Upload con drag & drop, warning 2-4GB, presigned URL |
+| `src/app/proyecto/[id]/page.tsx` | Progreso con stepper, tips rotativos, estado Failed + Reintentar |
+| `src/app/proyecto/[id]/revisar/page.tsx` | QC: supersplat-viewer iframe + Aprobar + modal Reprocesar HQ |
+| `src/app/proyecto/[id]/entrega/page.tsx` | Link copiable del tour |
+| `src/app/tour/[slug]/page.tsx` | Server component — carga datos del proyecto |
+| `src/app/tour/[slug]/TourViewer.tsx` | Spark viewer para mobile (carga .spz) |
+| `src/app/viewer/page.tsx` | Viewer interno con @playcanvas/supersplat-viewer |
+| `src/app/api/presign/route.ts` | Genera presigned URL para upload directo a R2 |
+| `src/app/api/jobs/route.ts` | Dispara job en RunPod serverless |
+| `src/app/api/webhook/route.ts` | Recibe resultado de RunPod, actualiza Supabase |
+| `src/lib/supabase.ts` | Cliente Supabase + tipos + STATUS_LABELS/COLORS |
+| `src/lib/r2.ts` | Presigned URLs + límites de upload + getPublicUrl |
+| `supabase/schema.sql` | Tabla projects + índices + función watchdog_stuck_jobs() |
+| `scripts/process_splat.sh` | Pipeline CLI: FFmpeg → COLMAP → OpenSplat → .ply + .spz |
+
+### Pendiente (del eng review)
+- **T13** `scripts/process_splat.sh` — reemplazar filtro blur por tamaño de archivo → usar `ffmpeg -vf "idet"` o varianza de Laplaciano. El filtro actual (`ls -lS` → borrar 5% más pequeños) es incorrecto, tamaño de archivo no correlaciona con nitidez.
+- **T14** Supabase cron — registrar `watchdog_stuck_jobs()` como pg_cron job cada 15 min en el SQL editor de Supabase: `SELECT cron.schedule('watchdog', '*/15 * * * *', 'SELECT watchdog_stuck_jobs()');`
+- **T15** Verificar licencia `@playcanvas/supersplat-viewer` para uso comercial antes de lanzar.
+- **CORS R2** — configurar en Cloudflare dashboard para que el viewer cargue .spz desde el browser (Origins: `*` o dominio específico, Methods: GET).
+- **TourViewer.tsx** importa Spark desde CDN (`cdn.jsdelivr.net`) como workaround. Cuando el paquete npm `@sparkxr/spark` esté disponible, cambiar a import estático.
+
+### Para arrancar en local
+```bash
+cp .env.local.example .env.local
+# Rellenar: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+#           R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME,
+#           R2_PUBLIC_URL, RUNPOD_API_KEY, RUNPOD_ENDPOINT_ID, RUNPOD_WEBHOOK_SECRET,
+#           NEXT_PUBLIC_APP_URL=http://localhost:3000
+npm run dev
+```
+Correr `supabase/schema.sql` en el SQL Editor de tu proyecto Supabase antes del primer uso.
+
 ## Skill routing
 
 - Estrategia → `/plan-ceo-review`
@@ -136,5 +175,5 @@ uploading → processing → reviewing → delivered
 - Pricing: proyecto 1 gratis, proyectos 2-3 a $300 USD, proyecto 4+ a $600-800 USD
 - Costo por proyecto: ~$0.20 USD (RunPod GPU)
 - Margen bruto a $300: ~87%
-- AI property assistant (Darwin.ai) planificado para mes 3-4
+- AI property assistant (Darwin.ai) planificado para mes 3-4 usando Darwin como backend
 - Plan completo: `PLAN.md` (gitignored — no commitear)
