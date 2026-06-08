@@ -46,10 +46,10 @@ export const STATUS_COLORS: Record<ProjectStatus, string> = {
   failed:       'text-red-500',
 }
 
-// Cliente browser (usa anon key)
+// Cliente browser — soporta tanto el nombre nuevo (PUBLISHABLE_KEY) como el viejo (ANON_KEY)
 export const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)!
 )
 
 // Cliente servidor (usa service role — solo en API routes)
