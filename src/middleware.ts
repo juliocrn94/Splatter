@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // Rutas públicas — no requieren autenticación
 const PUBLIC_PREFIXES = ['/tour/', '/login']
-const PUBLIC_API_PREFIXES = ['/api/webhook/']
+const PUBLIC_API_PREFIXES = ['/api/webhook/', '/api/auth/']
 
 function isPublic(pathname: string): boolean {
   return (

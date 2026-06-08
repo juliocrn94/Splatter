@@ -46,22 +46,29 @@ export const STATUS_COLORS: Record<ProjectStatus, string> = {
   failed:       'text-red-500',
 }
 
-function requireEnv(key: string): string {
-  const val = process.env[key]
-  if (!val) throw new Error(`Variable de entorno requerida no encontrada: ${key}`)
-  return val
+// Cliente browser — lazy para evitar errores en la evaluación del módulo
+let _supabase: ReturnType<typeof createClient> | null = null
+
+export function getSupabase() {
+  if (!_supabase) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const key = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)!
+    _supabase = createClient(url, key)
+  }
+  return _supabase
 }
 
-// Cliente browser — soporta tanto el nombre nuevo (PUBLISHABLE_KEY) como el viejo (ANON_KEY)
-export const supabase = createClient(
-  requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-  (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY'))
-)
+// Alias para compatibilidad con el código existente
+export const supabase = {
+  from: (...args: Parameters<ReturnType<typeof createClient>['from']>) => getSupabase().from(...args),
+  channel: (...args: Parameters<ReturnType<typeof createClient>['channel']>) => getSupabase().channel(...args),
+  removeChannel: (...args: Parameters<ReturnType<typeof createClient>['removeChannel']>) => getSupabase().removeChannel(...args),
+}
 
 // Cliente servidor (usa service role — solo en API routes)
 export const supabaseAdmin = () =>
   createClient(
-    requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
-    requireEnv('SUPABASE_SERVICE_ROLE_KEY'),
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
