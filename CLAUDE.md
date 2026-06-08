@@ -142,23 +142,43 @@ uploading → processing → reviewing → delivered
 | `supabase/schema.sql` | Tabla projects + índices + función watchdog_stuck_jobs() |
 | `scripts/process_splat.sh` | Pipeline CLI: FFmpeg → COLMAP → OpenSplat → .ply + .spz |
 
+### Estado de servicios externos
+
+| Servicio | Estado | Notas |
+|---|---|---|
+| Supabase | ✅ Listo | Schema corrido, pg_cron watchdog activo, keys en .env.local |
+| Cloudflare R2 | ⏳ Pendiente | Crear bucket + CORS + API token |
+| RunPod | ⏳ Pendiente | Crear Docker image + endpoint serverless |
+| Vercel | ⏳ Pendiente | Deploy final |
+
+### Notas sobre Supabase API keys (nuevo sistema 2026)
+Supabase cambió el sistema de keys. El mapeo para `.env.local` es:
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` → usar la **Publishable key** (`sb_publishable_...`)
+- `SUPABASE_SERVICE_ROLE_KEY` → usar la **Secret key** (`sb_secret_...`)
+- `NEXT_PUBLIC_SUPABASE_URL` → copiar del botón **Connect** en el dashboard (`https://xxxx.supabase.co`)
+
 ### Pendiente (del eng review)
-- **T13** `scripts/process_splat.sh` — reemplazar filtro blur por tamaño de archivo → usar `ffmpeg -vf "idet"` o varianza de Laplaciano. El filtro actual (`ls -lS` → borrar 5% más pequeños) es incorrecto, tamaño de archivo no correlaciona con nitidez.
-- **T14** Supabase cron — registrar `watchdog_stuck_jobs()` como pg_cron job cada 15 min en el SQL editor de Supabase: `SELECT cron.schedule('watchdog', '*/15 * * * *', 'SELECT watchdog_stuck_jobs()');`
-- **T15** Verificar licencia `@playcanvas/supersplat-viewer` para uso comercial antes de lanzar.
-- **CORS R2** — configurar en Cloudflare dashboard para que el viewer cargue .spz desde el browser (Origins: `*` o dominio específico, Methods: GET).
-- **TourViewer.tsx** importa Spark desde CDN (`cdn.jsdelivr.net`) como workaround. Cuando el paquete npm `@sparkxr/spark` esté disponible, cambiar a import estático.
+- **T13** ✅ Aplicado — filtro blur usa ffmpeg blurdetect + fallback Laplaciano Python
+- **T14** ✅ Aplicado — cron watchdog registrado en Supabase (watchdog-stuck-jobs, cada 15 min)
+- **T15** Verificar licencia `@playcanvas/supersplat-viewer` para uso comercial antes de lanzar
+- **CORS R2** — configurar en Cloudflare dashboard (Origins: `*`, Methods: GET) cuando se cree el bucket
+- **TourViewer.tsx** importa Spark desde CDN como workaround — cambiar a npm cuando esté disponible
 
 ### Para arrancar en local
 ```bash
+# 1. Crear .env.local con las credenciales (ver .env.local.example como template)
 cp .env.local.example .env.local
-# Rellenar: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
-#           R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET_NAME,
-#           R2_PUBLIC_URL, RUNPOD_API_KEY, RUNPOD_ENDPOINT_ID, RUNPOD_WEBHOOK_SECRET,
-#           NEXT_PUBLIC_APP_URL=http://localhost:3000
+# Editar .env.local con: Supabase URL + keys, R2 credentials, RunPod keys
+
+# 2. Instalar dependencias
+npm install
+
+# 3. Correr en desarrollo
 npm run dev
+# Abre http://localhost:3000
 ```
-Correr `supabase/schema.sql` en el SQL Editor de tu proyecto Supabase antes del primer uso.
+
+**Prerequisito:** correr `supabase/schema.sql` en el SQL Editor del proyecto Supabase antes del primer uso.
 
 ## Skill routing
 
