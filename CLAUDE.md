@@ -111,6 +111,7 @@ Transiciones de estado controladas server-side:
 |---|---|---|
 | `/login` | pública | Login del operador |
 | `/` | operador | Lista de proyectos (dashboard) |
+| `/guia` | operador | Guía de captura: checklist, movimiento, iluminación, fallas comunes |
 | `/nuevo` | operador | Crear proyecto + upload video |
 | `/proyecto/[id]` | operador | Progreso del procesamiento |
 | `/proyecto/[id]/revisar` | operador | QC: ver .spz, Aprobar o Reprocesar |
@@ -161,7 +162,8 @@ Transiciones de estado controladas server-side:
 |---|---|
 | `src/middleware.ts` | Protege rutas del operador con contraseña (cookie httpOnly) |
 | `src/app/login/page.tsx` | Login del operador |
-| `src/app/page.tsx` | Lista de proyectos con Supabase Realtime |
+| `src/app/guia/page.tsx` | Guía de captura: checklist, movimiento, iluminación, fallas, referencia técnica |
+| `src/app/page.tsx` | Lista de proyectos con Supabase Realtime + link a guía |
 | `src/app/nuevo/page.tsx` | Upload con drag & drop, warning 2-4GB, presigned URL |
 | `src/app/proyecto/[id]/page.tsx` | Progreso con stepper, tips rotativos, estado Failed + Reintentar |
 | `src/app/proyecto/[id]/revisar/page.tsx` | QC: supersplat-viewer iframe + Aprobar + modal Reprocesar HQ |

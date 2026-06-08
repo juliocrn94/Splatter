@@ -43,12 +43,20 @@ export default function HomePage() {
             <h1 className="text-2xl font-bold">Splatter</h1>
             <p className="text-gray-400 text-sm mt-1">Tours 3D — Dashboard operador</p>
           </div>
-          <Link
-            href="/nuevo"
-            className="bg-violet-600 hover:bg-violet-500 text-white px-5 py-2.5 rounded-lg font-medium transition-colors"
-          >
-            + Nuevo proyecto
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/guia"
+              className="text-sm text-gray-400 hover:text-gray-200 border border-gray-700 hover:border-gray-500 px-4 py-2.5 rounded-lg transition-colors"
+            >
+              Cómo grabar
+            </Link>
+            <Link
+              href="/nuevo"
+              className="bg-violet-600 hover:bg-violet-500 text-white px-5 py-2.5 rounded-lg font-medium transition-colors"
+            >
+              + Nuevo proyecto
+            </Link>
+          </div>
         </div>
 
         {loading ? (
