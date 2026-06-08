@@ -1,41 +1,31 @@
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
+# Base de RunPod con PyTorch + CUDA ya instalados — evita compilar LibTorch
+FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PATH="/usr/local/bin:${PATH}"
 
-# Dependencias del sistema
+# Sistema + COLMAP desde apt (sin compilar)
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip git cmake build-essential ninja-build \
-    ffmpeg libboost-all-dev libeigen3-dev libflann-dev \
-    libfreeimage-dev libmetis-dev libgoogle-glog-dev \
-    libgflags-dev libsqlite3-dev libglew-dev \
-    qtbase5-dev libqt5opengl5-dev libcgal-dev libceres-dev \
-    wget curl unzip \
+    colmap \
+    ffmpeg \
+    git cmake ninja-build \
+    python3-pip wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Python packages
-RUN pip3 install --no-cache-dir runpod boto3 pillow numpy requests
-
-# COLMAP
-RUN git clone --depth=1 https://github.com/colmap/colmap.git /tmp/colmap && \
-    cd /tmp/colmap && mkdir build && cd build && \
-    cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release && \
-    ninja && ninja install && \
-    rm -rf /tmp/colmap
-
 # Vocab tree para COLMAP vocab_tree_matcher
-RUN wget -q https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin \
+RUN wget -q "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin" \
     -O /opt/vocab_tree.bin
 
-# OpenSplat
+# Python packages
+RUN pip install --no-cache-dir runpod boto3 pillow numpy requests spz
+
+# OpenSplat — compila usando PyTorch ya instalado en la imagen base
 RUN git clone --depth=1 https://github.com/pierotofy/OpenSplat.git /tmp/opensplat && \
     cd /tmp/opensplat && mkdir build && cd build && \
-    cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release && \
-    ninja && cp opensplat /usr/local/bin/ && \
+    cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
+        -DTORCH_DIR="$(python3 -c 'import torch; print(torch.utils.cmake_prefix_path)')" && \
+    ninja && \
+    cp opensplat /usr/local/bin/ && \
     rm -rf /tmp/opensplat
-
-# spz — conversión .ply → .spz
-RUN pip3 install --no-cache-dir spz
 
 # Archivos del pipeline (rutas relativas a la raíz del repo)
 COPY docker/process_splat.sh /opt/process_splat.sh
