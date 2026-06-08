@@ -18,14 +18,18 @@ RUN wget -q "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin" \
 # Python packages
 RUN pip install --no-cache-dir runpod boto3 pillow numpy requests spz
 
-# OpenSplat — compila usando PyTorch ya instalado en la imagen base
-RUN git clone --depth=1 https://github.com/pierotofy/OpenSplat.git /tmp/opensplat && \
+# OpenSplat — descarga tarball via HTTPS (git clone bloqueado en entorno RunPod)
+RUN wget -q --tries=3 \
+    "https://github.com/pierotofy/OpenSplat/archive/refs/tags/v1.1.4.tar.gz" \
+    -O /tmp/opensplat.tar.gz && \
+    tar xzf /tmp/opensplat.tar.gz -C /tmp && \
+    mv /tmp/OpenSplat-1.1.4 /tmp/opensplat && \
     cd /tmp/opensplat && mkdir build && cd build && \
     cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
         -DTORCH_DIR="$(python3 -c 'import torch; print(torch.utils.cmake_prefix_path)')" && \
-    ninja && \
+    ninja opensplat && \
     cp opensplat /usr/local/bin/ && \
-    rm -rf /tmp/opensplat
+    rm -rf /tmp/opensplat /tmp/opensplat.tar.gz
 
 # Archivos del pipeline (rutas relativas a la raíz del repo)
 COPY docker/process_splat.sh /opt/process_splat.sh
