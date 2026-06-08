@@ -35,14 +35,60 @@ ffmpeg -i "$VIDEO" \
 FRAME_COUNT=$(ls "$WORKDIR/frames/" | wc -l | tr -d ' ')
 echo "  → $FRAME_COUNT frames extraídos"
 
-# Filtro anti-blur: elimina el 5% más pequeño (frames borrosos)
+# Filtro anti-blur: usa ffmpeg blurdetect (FFmpeg >= 5.1) con fallback a varianza
+# de Laplaciano vía Python. Si ninguno está disponible, se salta el filtro con aviso.
 echo "  → Filtrando frames borrosos..."
-REMOVE_N=$(( FRAME_COUNT / 20 ))
-if [ $REMOVE_N -gt 0 ]; then
-  ls -lS "$WORKDIR/frames/"*.jpg | tail -n $REMOVE_N | awk '{print $NF}' | xargs rm -f
-  FRAME_COUNT=$(ls "$WORKDIR/frames/" | wc -l | tr -d ' ')
-  echo "  → $REMOVE_N frames borrosos eliminados, quedan $FRAME_COUNT"
+REMOVED=0
+
+# blurdetect devuelve 0.0 (nítido) → 1.0 (muy borroso); se eliminan frames >= 0.6
+BLUR_MAX=60  # porcentaje entero
+
+# Varianza de Laplaciano: < 100 = borroso (umbral conservador para interiores)
+LAP_MIN=100
+
+HAS_BLURDETECT=$(ffmpeg -filters 2>/dev/null | grep -c "^ *blurdetect" || echo 0)
+
+if [ "$HAS_BLURDETECT" -gt 0 ]; then
+  echo "    modo: ffmpeg blurdetect (umbral ${BLUR_MAX}%)"
+  for f in "$WORKDIR/frames/"*.jpg; do
+    SCORE=$(ffmpeg -i "$f" \
+      -vf "blurdetect,metadata=print:file=-" \
+      -frames:v 1 -f null - 2>/dev/null \
+      | awk -F= '/lavfi\.blur=/{printf "%d", $2 * 100; exit}')
+    SCORE=${SCORE:-0}
+    if [ "$SCORE" -ge "$BLUR_MAX" ] 2>/dev/null; then
+      rm -f "$f"
+      REMOVED=$(( REMOVED + 1 ))
+    fi
+  done
+
+elif command -v python3 >/dev/null 2>&1; then
+  echo "    modo: varianza de Laplaciano Python (umbral ${LAP_MIN})"
+  for f in "$WORKDIR/frames/"*.jpg; do
+    IS_BLURRY=$(python3 - "$f" <<'PYEOF'
+import sys
+try:
+    from PIL import Image, ImageFilter
+    import numpy as np
+    img = Image.open(sys.argv[1]).convert('L')
+    arr = np.array(img.filter(ImageFilter.FIND_EDGES), dtype=float)
+    print(1 if arr.var() < 100 else 0)
+except Exception:
+    print(0)
+PYEOF
+    )
+    if [ "${IS_BLURRY:-0}" = "1" ]; then
+      rm -f "$f"
+      REMOVED=$(( REMOVED + 1 ))
+    fi
+  done
+
+else
+  echo "    AVISO: ffmpeg blurdetect y python3+PIL no disponibles — filtro de blur omitido"
 fi
+
+FRAME_COUNT=$(ls "$WORKDIR/frames/" | wc -l | tr -d ' ')
+echo "  → $REMOVED frames borrosos eliminados, quedan $FRAME_COUNT"
 
 # Cap de frames: máximo 400 en modo standard
 if [ "$QUALITY" = "standard" ] && [ "$FRAME_COUNT" -gt "$MAX_FRAMES" ]; then

@@ -58,8 +58,13 @@ export default function ProyectoPage() {
 
   async function handleRetry() {
     if (!project) return
-    await supabase.from('projects').update({ status: 'uploading', error_message: null }).eq('id', id)
-    router.push(`/nuevo?retry=${id}`)
+    try {
+      const res = await fetch(`/api/projects/${id}/retry`, { method: 'POST' })
+      if (!res.ok) throw new Error('Error al reintentar')
+      router.push(`/nuevo?retry=${id}`)
+    } catch {
+      alert('No se pudo reiniciar el proyecto. Intenta de nuevo.')
+    }
   }
 
   if (!project) {

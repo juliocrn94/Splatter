@@ -1,16 +1,22 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
+function requireEnv(key: string): string {
+  const val = process.env[key]
+  if (!val) throw new Error(`Variable de entorno requerida no encontrada: ${key}`)
+  return val
+}
+
 export const r2 = new S3Client({
   region: 'auto',
-  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  endpoint: `https://${requireEnv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
   credentials: {
-    accessKeyId:     process.env.R2_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    accessKeyId:     requireEnv('R2_ACCESS_KEY_ID'),
+    secretAccessKey: requireEnv('R2_SECRET_ACCESS_KEY'),
   },
 })
 
-export const BUCKET = process.env.R2_BUCKET_NAME!
+export const BUCKET = requireEnv('R2_BUCKET_NAME')
 
 // Límites de upload en bytes
 export const UPLOAD_LIMITS = {
@@ -52,5 +58,5 @@ export async function getPresignedUploadUrl(key: string, contentType: string) {
 }
 
 export function getPublicUrl(key: string) {
-  return `${process.env.R2_PUBLIC_URL}/${key}`
+  return `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${key}`
 }

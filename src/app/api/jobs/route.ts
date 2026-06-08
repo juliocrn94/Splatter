@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getPresignedUploadUrl } from '@/lib/r2'
+
+const DISPATCHABLE_STATUSES = ['uploading', 'reviewing', 'failed']
 
 export async function POST(req: NextRequest) {
-  const { projectId, videoKey, quality = 'standard' } = await req.json()
+  const { projectId, videoKey, quality: rawQuality = 'standard' } = await req.json()
 
   if (!projectId || !videoKey) {
     return NextResponse.json({ error: 'projectId y videoKey son requeridos' }, { status: 400 })
   }
 
+  // Validar quality — solo valores conocidos
+  const quality = rawQuality === 'hq' ? 'hq' : 'standard'
+
+  // Validar que videoKey tenga el prefijo esperado
+  if (!String(videoKey).startsWith('videos/')) {
+    return NextResponse.json({ error: 'videoKey inválido' }, { status: 400 })
+  }
+
   const db = supabaseAdmin()
 
-  // Verificar que el proyecto existe
   const { data: project, error: fetchErr } = await db
     .from('projects')
-    .select('id, status')
+    .select('id, status, video_r2_key')
     .eq('id', projectId)
     .single()
 
@@ -21,10 +31,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
   }
 
-  // Armar la URL del webhook que RunPod llamará al terminar
+  // Guard: no despachar si ya hay un job activo
+  if (!DISPATCHABLE_STATUSES.includes(project.status)) {
+    return NextResponse.json(
+      { error: `El proyecto ya está en estado "${project.status}" y no puede iniciar un nuevo job` },
+      { status: 409 }
+    )
+  }
+
+  // Pre-generar claves de salida y URLs firmadas para que RunPod suba los archivos sin credenciales
+  const plyKey = `results/${projectId}.ply`
+  const spzKey = `results/${projectId}.spz`
+  const [plyUploadUrl, spzUploadUrl] = await Promise.all([
+    getPresignedUploadUrl(plyKey, 'application/octet-stream'),
+    getPresignedUploadUrl(spzKey, 'application/octet-stream'),
+  ])
+
   const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook/runpod`
 
-  // Disparar job en RunPod serverless
   const runpodRes = await fetch(
     `https://api.runpod.io/v2/${process.env.RUNPOD_ENDPOINT_ID}/run`,
     {
@@ -35,13 +59,11 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         input: {
-          video_r2_key: videoKey,
-          project_id:   projectId,
+          video_r2_key:   videoKey,
+          project_id:     projectId,
           quality,
-          r2_account_id:    process.env.R2_ACCOUNT_ID,
-          r2_access_key:    process.env.R2_ACCESS_KEY_ID,
-          r2_secret_key:    process.env.R2_SECRET_ACCESS_KEY,
-          r2_bucket:        process.env.R2_BUCKET_NAME,
+          ply_upload_url: plyUploadUrl,
+          spz_upload_url: spzUploadUrl,
         },
         webhook: webhookUrl,
       }),
@@ -49,19 +71,20 @@ export async function POST(req: NextRequest) {
   )
 
   if (!runpodRes.ok) {
-    const err = await runpodRes.text()
-    console.error('RunPod error:', err)
     return NextResponse.json({ error: 'No se pudo iniciar el procesamiento' }, { status: 502 })
   }
 
   const { id: runpodJobId } = await runpodRes.json()
 
-  // Actualizar proyecto con job ID y estado
+  const newStatus = project.status === 'reviewing' ? 'reprocessing' : 'processing'
+
   await db.from('projects').update({
-    status:                'processing',
+    status:                newStatus,
     runpod_job_id:         runpodJobId,
     quality,
     video_r2_key:          videoKey,
+    ply_r2_key:            plyKey,
+    spz_r2_key:            spzKey,
     processing_started_at: new Date().toISOString(),
   }).eq('id', projectId)
 

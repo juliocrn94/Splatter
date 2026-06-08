@@ -19,8 +19,9 @@ export async function POST(req: NextRequest) {
     }, { status: 413 })
   }
 
-  const ext = filename.split('.').pop() ?? 'mp4'
-  const key = `videos/${randomUUID()}.${ext}`
+  const rawExt = filename.split('.').pop() ?? 'mp4'
+  const ext    = rawExt.replace(/[^a-z0-9]/gi, '').slice(0, 10) || 'mp4'
+  const key    = `videos/${randomUUID()}.${ext}`
   const url = await getPresignedUploadUrl(key, contentType)
 
   return NextResponse.json({ url, key })

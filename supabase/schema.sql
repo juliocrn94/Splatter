@@ -24,6 +24,23 @@ CREATE TABLE IF NOT EXISTS projects (
 -- Habilitar Realtime
 ALTER TABLE projects REPLICA IDENTITY FULL;
 
+-- Row Level Security:
+-- - anon puede leer (necesario para las lecturas client-side y Realtime)
+-- - anon NO puede escribir (las mutaciones van por API routes con service role)
+-- - service role tiene acceso completo
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anon read only" ON projects
+  FOR SELECT
+  TO anon
+  USING (true);
+
+CREATE POLICY "service role full access" ON projects
+  FOR ALL
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
 -- Índices
 CREATE INDEX projects_status_idx ON projects (status);
 CREATE INDEX projects_slug_idx   ON projects (slug);
@@ -40,3 +57,12 @@ RETURNS void AS $$
     status IN ('processing', 'reprocessing')
     AND processing_started_at < NOW() - INTERVAL '2 hours';
 $$ LANGUAGE sql;
+
+-- Registrar el watchdog como cron job cada 15 minutos.
+-- Requiere pg_cron habilitado en Supabase (Database → Extensions → pg_cron).
+-- Correr UNA VEZ manualmente en el SQL Editor después de habilitar la extensión:
+SELECT cron.schedule(
+  'watchdog-stuck-jobs',        -- nombre del job (único)
+  '*/15 * * * *',               -- cada 15 minutos
+  'SELECT watchdog_stuck_jobs()'
+);

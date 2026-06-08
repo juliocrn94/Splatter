@@ -1,0 +1,9 @@
+[
+  {
+    "AllowedOrigins": ["https://splatter.mx", "http://localhost:3000"],
+    "AllowedMethods": ["GET", "HEAD", "PUT"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["Content-Length", "Content-Type", "ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]

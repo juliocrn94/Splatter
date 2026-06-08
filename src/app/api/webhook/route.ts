@@ -31,28 +31,28 @@ export async function POST(req: NextRequest) {
 
   const db = supabaseAdmin()
 
-  // Buscar proyecto por job ID
+  // Buscar proyecto por job ID — garantiza que este webhook es para el job activo
   const { data: project } = await db
     .from('projects')
-    .select('id, status')
+    .select('id, status, runpod_job_id')
     .eq('runpod_job_id', runpodJobId)
     .single()
 
   if (!project) {
-    // Job no encontrado — puede ser un webhook duplicado, ignorar
+    // Job no encontrado o pertenece a un job anterior (stale webhook) — ignorar
     return NextResponse.json({ ok: true })
   }
 
-  // Ignorar si ya fue procesado (idempotencia)
-  if (project.status === 'reviewing' || project.status === 'delivered') {
+  // Idempotencia: ignorar si el proyecto ya está en un estado terminal o en un nuevo job
+  const TERMINAL_STATUSES = ['reviewing', 'reprocessing', 'delivered']
+  if (TERMINAL_STATUSES.includes(project.status)) {
     return NextResponse.json({ ok: true })
   }
 
-  if (status === 'COMPLETED' && output) {
+  if (status === 'COMPLETED') {
+    // Las claves de salida ya fueron guardadas al despachar el job — solo actualizar status
     await db.from('projects').update({
-      status:      'reviewing',
-      ply_r2_key:  output.ply_key,
-      spz_r2_key:  output.spz_key,
+      status: 'reviewing',
     }).eq('id', project.id)
   } else {
     await db.from('projects').update({

@@ -4,20 +4,23 @@
 
 Servicio de captura y entrega de tours 3D fotorrealistas (Gaussian Splatting) para desarrolladoras inmobiliarias en preventa en CDMX. El operador graba un video de la propiedad, el sistema lo procesa en un tour 3D interactivo, y entrega un link compartible al cliente.
 
-**Stack principal:** Next.js 14 (App Router) + Supabase + Cloudflare R2 + RunPod serverless + Vercel
+**Stack principal:** Next.js 16 (App Router) + Supabase + Cloudflare R2 + RunPod serverless + Vercel
 
 ## Arquitectura
 
 ```
-BROWSER (operador)
+BROWSER (operador) — protegido por middleware de contraseña
     │
     ├── GET /api/presign → URL firmada R2 → browser sube video DIRECTO a R2
-    ├── POST /api/jobs   → dispara RunPod serverless
+    ├── POST /api/jobs   → dispara RunPod serverless (pasa presigned upload URLs, no credenciales)
+    ├── POST /api/projects/[id]/deliver → aprueba proyecto (server-side)
+    ├── POST /api/projects/[id]/retry   → reinicia proyecto fallido (server-side)
     │
 RUNPOD (GPU cloud, ~$0.20/proyecto)
     │   FFmpeg → COLMAP → OpenSplat → .ply + .spz
+    │   Sube outputs vía presigned PUT URLs (sin credenciales R2 en el payload)
     │
-    └── POST /api/webhook/runpod → actualiza Supabase
+    └── POST /api/webhook/runpod → actualiza Supabase (solo status, keys ya guardadas)
                                  → Supabase Realtime push al browser
 
 VIEWERS
@@ -39,7 +42,7 @@ VIEWERS
 ```env
 # Supabase
 NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=   # antes: ANON_KEY
 SUPABASE_SERVICE_ROLE_KEY=
 
 # Cloudflare R2
@@ -47,7 +50,7 @@ R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET_NAME=
-R2_PUBLIC_URL=
+NEXT_PUBLIC_R2_PUBLIC_URL=   # IMPORTANTE: prefijo NEXT_PUBLIC_ requerido (usado en el cliente)
 
 # RunPod
 RUNPOD_API_KEY=
@@ -56,6 +59,9 @@ RUNPOD_WEBHOOK_SECRET=
 
 # App
 NEXT_PUBLIC_APP_URL=
+
+# Autenticación del operador
+OPERATOR_PASSWORD=   # contraseña para acceder al dashboard — generar con: openssl rand -base64 24
 ```
 
 ## Schema de base de datos (Supabase)
@@ -71,8 +77,8 @@ CREATE TABLE projects (
   -- estados: uploading | processing | reviewing | reprocessing | delivered | failed
   error_message TEXT,
   video_r2_key  TEXT,
-  ply_r2_key    TEXT,
-  spz_r2_key    TEXT,
+  ply_r2_key    TEXT,   -- guardado al despachar el job (antes del webhook)
+  spz_r2_key    TEXT,   -- guardado al despachar el job (antes del webhook)
   runpod_job_id TEXT,
   quality       TEXT DEFAULT 'standard',
   processing_started_at TIMESTAMPTZ,
@@ -82,6 +88,8 @@ CREATE TABLE projects (
 ALTER TABLE projects REPLICA IDENTITY FULL;
 ```
 
+**RLS activo** — anon key (cliente) solo puede leer. Escrituras solo via service role (API routes).
+
 ## Estado del proyecto (state machine)
 
 ```
@@ -90,21 +98,42 @@ uploading → processing → reviewing → delivered
             failed         reprocessing → reviewing → delivered
 ```
 
+Transiciones de estado controladas server-side:
+- `uploading → processing`: `/api/jobs` (dispatch inicial)
+- `reviewing → reprocessing`: `/api/jobs` con `quality: 'hq'`
+- `reviewing → delivered`: `/api/projects/[id]/deliver`
+- `failed → uploading`: `/api/projects/[id]/retry`
+- `processing/reprocessing → failed`: webhook de RunPod
+
 ## Rutas
+
+| Ruta | Auth | Descripción |
+|---|---|---|
+| `/login` | pública | Login del operador |
+| `/` | operador | Lista de proyectos (dashboard) |
+| `/nuevo` | operador | Crear proyecto + upload video |
+| `/proyecto/[id]` | operador | Progreso del procesamiento |
+| `/proyecto/[id]/revisar` | operador | QC: ver .spz, Aprobar o Reprocesar |
+| `/proyecto/[id]/entrega` | operador | Link final copiable |
+| `/tour/[slug]` | pública | Tour público con Spark viewer (mobile) |
+| `/viewer` | operador | Viewer interno supersplat (cargado via iframe desde revisar) |
+
+## API routes
 
 | Ruta | Descripción |
 |---|---|
-| `/` | Lista de proyectos (dashboard operador) |
-| `/nuevo` | Crear proyecto + upload video |
-| `/proyecto/[id]` | Progreso del procesamiento |
-| `/proyecto/[id]/revisar` | QC: ver .spz, Aprobar o Reprocesar |
-| `/proyecto/[id]/entrega` | Link final |
-| `/tour/[slug]` | Tour público con Spark viewer (mobile) |
+| `POST /api/presign` | Genera presigned URL para upload directo a R2 |
+| `POST /api/jobs` | Despacha job en RunPod + guarda output keys + actualiza status |
+| `POST /api/webhook/runpod` | Recibe resultado de RunPod, actualiza status (sin credenciales) |
+| `POST /api/projects/[id]/deliver` | Aprueba un proyecto en `reviewing` |
+| `POST /api/projects/[id]/retry` | Reinicia un proyecto `failed` a `uploading` |
+| `POST /api/auth/login` | Valida contraseña y setea cookie `operator_token` |
 
 ## Formatos de archivo
 
-- **`.ply`** — maestro (300-800MB). Solo en R2, nunca se muestra al usuario.
-- **`.spz`** — entrega (15-30MB). 10x más pequeño, mobile-optimizado. Todos los viewers lo usan.
+- **`.ply`** — maestro (300-800MB). Clave: `results/{projectId}.ply`. Solo en R2.
+- **`.spz`** — entrega (15-30MB). Clave: `results/{projectId}.spz`. Todos los viewers lo usan.
+- **videos** — Clave: `videos/{uuid}.{ext}`. Input del pipeline.
 
 ## Límites de upload
 
@@ -120,12 +149,18 @@ uploading → processing → reviewing → delivered
 4. COLMAP vocab_tree_matcher — exhaustive_matcher hace OOM con 400+ imágenes
 5. Path-based routing `splatter.mx/tour/slug` — subdominios del cliente = DNS pain
 6. Self-hosted viewers: supersplat-viewer (npm) para dashboard, Spark para mobile
+7. RunPod recibe presigned upload URLs (no credenciales R2) — credenciales nunca salen del servidor
+8. Output keys (`ply_r2_key`, `spz_r2_key`) guardadas al despachar el job, no al recibir el webhook
+9. Auth de operador via cookie httpOnly + middleware — sin Supabase Auth para simplicidad del MVP
 
-## Estado del build (commit 167805e)
+## Estado del build
 
 ### Lo que está construido y funciona
+
 | Archivo | Qué hace |
 |---|---|
+| `src/middleware.ts` | Protege rutas del operador con contraseña (cookie httpOnly) |
+| `src/app/login/page.tsx` | Login del operador |
 | `src/app/page.tsx` | Lista de proyectos con Supabase Realtime |
 | `src/app/nuevo/page.tsx` | Upload con drag & drop, warning 2-4GB, presigned URL |
 | `src/app/proyecto/[id]/page.tsx` | Progreso con stepper, tips rotativos, estado Failed + Reintentar |
@@ -133,52 +168,51 @@ uploading → processing → reviewing → delivered
 | `src/app/proyecto/[id]/entrega/page.tsx` | Link copiable del tour |
 | `src/app/tour/[slug]/page.tsx` | Server component — carga datos del proyecto |
 | `src/app/tour/[slug]/TourViewer.tsx` | Spark viewer para mobile (carga .spz) |
-| `src/app/viewer/page.tsx` | Viewer interno con @playcanvas/supersplat-viewer |
-| `src/app/api/presign/route.ts` | Genera presigned URL para upload directo a R2 |
-| `src/app/api/jobs/route.ts` | Dispara job en RunPod serverless |
-| `src/app/api/webhook/route.ts` | Recibe resultado de RunPod, actualiza Supabase |
-| `src/lib/supabase.ts` | Cliente Supabase + tipos + STATUS_LABELS/COLORS |
-| `src/lib/r2.ts` | Presigned URLs + límites de upload + getPublicUrl |
-| `supabase/schema.sql` | Tabla projects + índices + función watchdog_stuck_jobs() |
+| `src/app/viewer/page.tsx` | Viewer interno con @playcanvas/supersplat-viewer (valida origen R2) |
+| `src/app/api/presign/route.ts` | Genera presigned URL para upload (extensión sanitizada) |
+| `src/app/api/jobs/route.ts` | Despacha job RunPod con presigned output URLs + status guard |
+| `src/app/api/webhook/route.ts` | Recibe resultado RunPod, valida job ID, actualiza status |
+| `src/app/api/projects/[id]/deliver/route.ts` | Aprobar proyecto (server-side, valida estado) |
+| `src/app/api/projects/[id]/retry/route.ts` | Reintentar proyecto fallido (server-side) |
+| `src/app/api/auth/login/route.ts` | Autenticación del operador |
+| `src/lib/supabase.ts` | Cliente Supabase + tipos + validación de env vars al startup |
+| `src/lib/r2.ts` | Presigned URLs + límites de upload + validación de env vars al startup |
+| `supabase/schema.sql` | Tabla + RLS + índices + watchdog_stuck_jobs() + pg_cron |
 | `scripts/process_splat.sh` | Pipeline CLI: FFmpeg → COLMAP → OpenSplat → .ply + .spz |
+| `cloudflare/r2-cors.json` | Config CORS para el bucket R2 (GET + HEAD + PUT) |
 
 ### Estado de servicios externos
 
 | Servicio | Estado | Notas |
 |---|---|---|
-| Supabase | ✅ Listo | Schema corrido, pg_cron watchdog activo, keys en .env.local |
-| Cloudflare R2 | ⏳ Pendiente | Crear bucket + CORS + API token |
-| RunPod | ⏳ Pendiente | Crear Docker image + endpoint serverless |
-| Vercel | ⏳ Pendiente | Deploy final |
+| Supabase | ✅ Listo | Schema corrido, RLS activo, pg_cron watchdog activo |
+| Cloudflare R2 | ⏳ Pendiente | Crear bucket + aplicar `cloudflare/r2-cors.json` + API token |
+| RunPod | ⏳ Pendiente | Crear Docker image + endpoint serverless; actualizar worker para usar presigned PUT URLs |
+| Vercel | ⏳ Pendiente | Deploy final + env vars (incluye `NEXT_PUBLIC_R2_PUBLIC_URL` y `OPERATOR_PASSWORD`) |
 
 ### Notas sobre Supabase API keys (nuevo sistema 2026)
-Supabase cambió el sistema de keys. El mapeo para `.env.local` es:
+
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` → usar la **Publishable key** (`sb_publishable_...`)
 - `SUPABASE_SERVICE_ROLE_KEY` → usar la **Secret key** (`sb_secret_...`)
-- `NEXT_PUBLIC_SUPABASE_URL` → copiar del botón **Connect** en el dashboard (`https://xxxx.supabase.co`)
+- `NEXT_PUBLIC_SUPABASE_URL` → copiar del botón **Connect** (`https://xxxx.supabase.co`)
 
-### Pendiente (del eng review)
-- **T13** ✅ Aplicado — filtro blur usa ffmpeg blurdetect + fallback Laplaciano Python
-- **T14** ✅ Aplicado — cron watchdog registrado en Supabase (watchdog-stuck-jobs, cada 15 min)
-- **T15** Verificar licencia `@playcanvas/supersplat-viewer` para uso comercial antes de lanzar
-- **CORS R2** — configurar en Cloudflare dashboard (Origins: `*`, Methods: GET) cuando se cree el bucket
-- **TourViewer.tsx** importa Spark desde CDN como workaround — cambiar a npm cuando esté disponible
+### Pendiente
+
+- **RunPod worker**: actualizar `process_splat.sh` para usar `ply_upload_url` / `spz_upload_url` en lugar de credenciales R2 directas
+- **TourViewer.tsx**: importa Spark desde CDN (`cdn.jsdelivr.net`) como workaround — cambiar a npm cuando `@sparkxr/spark` esté disponible
+- **T15** ✅ Resuelto — `@playcanvas/supersplat-viewer` es MIT License, libre para uso comercial
 
 ### Para arrancar en local
+
 ```bash
-# 1. Crear .env.local con las credenciales (ver .env.local.example como template)
 cp .env.local.example .env.local
-# Editar .env.local con: Supabase URL + keys, R2 credentials, RunPod keys
-
-# 2. Instalar dependencias
+# Rellenar: SUPABASE_URL, keys, R2_*, RUNPOD_*, NEXT_PUBLIC_APP_URL, OPERATOR_PASSWORD
 npm install
-
-# 3. Correr en desarrollo
 npm run dev
-# Abre http://localhost:3000
+# Abre http://localhost:3000/login
 ```
 
-**Prerequisito:** correr `supabase/schema.sql` en el SQL Editor del proyecto Supabase antes del primer uso.
+**Prerequisitos:** correr `supabase/schema.sql` en el SQL Editor de Supabase antes del primer uso (incluye RLS + pg_cron).
 
 ## Skill routing
 

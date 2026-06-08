@@ -25,36 +25,36 @@ export default function RevisarPage() {
   async function handleDeliver() {
     if (!project) return
     setDelivering(true)
-
-    await supabase
-      .from('projects')
-      .update({ status: 'delivered', delivered_at: new Date().toISOString() })
-      .eq('id', id)
-
-    router.push(`/proyecto/${id}/entrega`)
+    try {
+      const res = await fetch(`/api/projects/${id}/deliver`, { method: 'POST' })
+      if (!res.ok) throw new Error('Error al aprobar')
+      router.push(`/proyecto/${id}/entrega`)
+    } catch {
+      setDelivering(false)
+      alert('No se pudo aprobar el proyecto. Intenta de nuevo.')
+    }
   }
 
   async function handleReprocess() {
     if (!project) return
     setReprocessing(true)
     setShowHqConfirm(false)
-
-    await fetch('/api/jobs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        projectId: id,
-        videoKey:  project.video_r2_key,
-        quality:   'hq',
-      }),
-    })
-
-    await supabase
-      .from('projects')
-      .update({ status: 'reprocessing', quality: 'hq', processing_started_at: new Date().toISOString() })
-      .eq('id', id)
-
-    router.push(`/proyecto/${id}`)
+    try {
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: id,
+          videoKey:  project.video_r2_key,
+          quality:   'hq',
+        }),
+      })
+      if (!res.ok) throw new Error('Error al iniciar reproceso')
+      router.push(`/proyecto/${id}`)
+    } catch {
+      setReprocessing(false)
+      alert('No se pudo iniciar el reproceso. Intenta de nuevo.')
+    }
   }
 
   if (!project) {
