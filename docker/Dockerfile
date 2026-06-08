@@ -37,9 +37,9 @@ RUN git clone --depth=1 https://github.com/pierotofy/OpenSplat.git /tmp/openspla
 # spz — conversión .ply → .spz
 RUN pip3 install --no-cache-dir spz
 
-# Archivos del pipeline
-COPY process_splat.sh /opt/process_splat.sh
-COPY handler.py /opt/handler.py
+# Archivos del pipeline (rutas relativas a la raíz del repo)
+COPY docker/process_splat.sh /opt/process_splat.sh
+COPY docker/handler.py /opt/handler.py
 RUN chmod +x /opt/process_splat.sh
 
 WORKDIR /opt
