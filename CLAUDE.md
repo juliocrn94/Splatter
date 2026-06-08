@@ -154,6 +154,15 @@ Transiciones de estado controladas server-side:
 8. Output keys (`ply_r2_key`, `spz_r2_key`) guardadas al despachar el job, no al recibir el webhook
 9. Auth de operador via cookie httpOnly + middleware — sin Supabase Auth para simplicidad del MVP
 
+## Próximas features (Fase 2 del roadmap)
+
+Ver PLAN.md para contexto completo. Prioridad de build:
+
+1. **Editor integrado** — reemplazar viewer read-only en `/revisar` con SuperSplat editor real (permite recortar, limpiar, ajustar recorrido sin salir del dashboard)
+2. **Upload multi-fuente** — `/nuevo` acepta múltiples videos (DSLR + celular + dron), todos van al mismo COLMAP run. UX: "Video principal" + "Videos adicionales de detalle"
+3. **Corrección post-QC** — botón "Mejorar zona específica" en `/revisar` → sube video adicional → pipeline combina con captura original
+4. **Mejoras al pipeline**: exposure normalization, scene change filter, adaptive densification
+
 ## Estado del build
 
 ### Lo que está construido y funciona
