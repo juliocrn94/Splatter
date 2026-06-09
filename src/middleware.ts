@@ -3,7 +3,7 @@ import { isValidSession } from '@/lib/sessions'
 
 // Rutas públicas — no requieren autenticación
 const PUBLIC_PREFIXES = ['/tour/', '/login']
-const PUBLIC_API_PREFIXES = ['/api/webhook/', '/api/auth/']
+const PUBLIC_API_PREFIXES = ['/api/webhook', '/api/auth/']
 
 function isPublic(pathname: string): boolean {
   return (

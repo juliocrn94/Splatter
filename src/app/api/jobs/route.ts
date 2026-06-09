@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     getPresignedUploadUrl(spzKey, 'application/octet-stream'),
   ])
 
-  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook/runpod`
+  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook`
 
   const runpodRes = await fetch(
     `https://api.runpod.ai/v2/${process.env.RUNPOD_ENDPOINT_ID}/run`,
