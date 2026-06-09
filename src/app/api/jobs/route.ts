@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin, nextProjectCodeVersion } from "@/lib/supabase"
-import { getPresignedUploadUrl } from '@/lib/r2'
+import { getPresignedUploadUrl, getPresignedDownloadUrl } from '@/lib/r2'
 import { requireAuth } from '@/lib/auth'
 
 const DISPATCHABLE_STATUSES = ['uploading', 'reviewing', 'failed']
@@ -47,7 +47,8 @@ export async function POST(req: NextRequest) {
   // Pre-generar claves de salida y URLs firmadas para que RunPod suba los archivos sin credenciales
   const plyKey = `results/${projectId}.ply`
   const spzKey = `results/${projectId}.spz`
-  const [plyUploadUrl, spzUploadUrl] = await Promise.all([
+  const [videoDownloadUrl, plyUploadUrl, spzUploadUrl] = await Promise.all([
+    getPresignedDownloadUrl(videoKey),
     getPresignedUploadUrl(plyKey, 'application/octet-stream'),
     getPresignedUploadUrl(spzKey, 'application/octet-stream'),
   ])
@@ -64,8 +65,8 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         input: {
-          video_r2_key:   videoKey,
           project_id:     projectId,
+          video_url:      videoDownloadUrl,
           quality,
           ply_upload_url: plyUploadUrl,
           spz_upload_url: spzUploadUrl,

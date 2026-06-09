@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 // Cliente R2 lazy — solo se instancia en server (API routes), nunca en browser
@@ -54,6 +54,15 @@ export async function getPresignedUploadUrl(key: string, contentType: string) {
     getR2(),
     new PutObjectCommand({ Bucket: getBucket(), Key: key, ContentType: contentType }),
     { expiresIn: 600 }
+  )
+}
+
+// Presigned GET URL para que RunPod descargue el video (3 horas — suficiente para cualquier job)
+export async function getPresignedDownloadUrl(key: string) {
+  return getSignedUrl(
+    getR2(),
+    new GetObjectCommand({ Bucket: getBucket(), Key: key }),
+    { expiresIn: 10800 }
   )
 }
 
