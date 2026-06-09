@@ -250,7 +250,7 @@ export default function HomePage() {
                   </button>
 
                   {menuId === p.id && (
-                    <div className="absolute right-0 top-9 w-44 bg-gray-800 border border-gray-700 rounded-xl shadow-xl z-10 overflow-hidden">
+                    <div className="absolute right-0 top-9 w-48 bg-gray-800 border border-gray-700 rounded-xl shadow-xl z-10 overflow-hidden">
                       <button
                         onClick={(e) => openEdit(p, e)}
                         className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
@@ -264,6 +264,23 @@ export default function HomePage() {
                       >
                         👁 Ver proyecto
                       </Link>
+                      {p.status === 'failed' && (
+                        <button
+                          onClick={async (e) => {
+                            e.preventDefault(); e.stopPropagation()
+                            setMenuId(null)
+                            const res = await fetch(`/api/projects/${p.id}/retry`, { method: 'POST' })
+                            if (res.ok) {
+                              const { reused } = await res.json()
+                              if (!reused) window.location.href = '/nuevo'
+                              else setProjects(prev => prev.map(x => x.id === p.id ? { ...x, status: 'processing', error_message: null } : x))
+                            }
+                          }}
+                          className="w-full text-left px-4 py-2.5 text-sm text-violet-400 hover:bg-violet-950/30 flex items-center gap-2"
+                        >
+                          🔄 Reintentar
+                        </button>
+                      )}
                       <button
                         onClick={async (e) => { e.preventDefault(); e.stopPropagation()
                           await fetch(`/api/projects/${p.id}`, {
