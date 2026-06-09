@@ -106,17 +106,37 @@ export async function POST(req: NextRequest) {
     ? { project_code: nextProjectCodeVersion(project.project_code) }
     : {}
 
-  await db.from('projects').update({
-    status:                newStatus,
-    runpod_job_id:         runpodJobId,
-    quality,
-    video_r2_key:          primaryVideoKey,    // backwards compat
-    video_r2_keys:         videoKeys,           // array completo (2B)
-    ply_r2_key:            plyKey,
-    spz_r2_key:            spzKey,
-    processing_started_at: new Date().toISOString(),
-    ...codeUpdate,
-  }).eq('id', projectId)
+  // Optimistic lock: el UPDATE filtra por el status original que leyó este request.
+  // Si otro request concurrent ya cambió el status, este UPDATE afecta 0 rows y
+  // .single() falla — detectamos la race condition antes de confirmar el job.
+  const { data: committed, error: commitErr } = await db
+    .from('projects')
+    .update({
+      status:                newStatus,
+      runpod_job_id:         runpodJobId,
+      quality,
+      video_r2_key:          primaryVideoKey,
+      video_r2_keys:         videoKeys,
+      ply_r2_key:            plyKey,
+      spz_r2_key:            spzKey,
+      processing_started_at: new Date().toISOString(),
+      ...codeUpdate,
+    })
+    .eq('id', projectId)
+    .eq('status', project.status)  // lock: solo actualiza si nadie más lo tocó
+    .select('id')
+    .single()
+
+  if (commitErr || !committed) {
+    // El job ya fue despachado a RunPod pero no podemos rastrearlo — loguear para diagnóstico
+    console.error('[/api/jobs] Race condition: status cambió entre SELECT y UPDATE', {
+      projectId, runpodJobId, originalStatus: project.status,
+    })
+    return NextResponse.json(
+      { error: 'El proyecto ya fue procesado por otra solicitud. Recarga y reintenta.' },
+      { status: 409 }
+    )
+  }
 
   return NextResponse.json({ jobId: runpodJobId })
 }

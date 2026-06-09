@@ -118,3 +118,23 @@ CREATE POLICY "anon read only" ON processing_metrics
 
 CREATE POLICY "service role full access" ON processing_metrics
   FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- ─── Seguridad: RLS más restrictivo ──────────────────────────────────────────
+-- processing_metrics no necesita ser pública — solo la lee el API route server-side
+-- Reemplazar la política anon permisiva:
+-- DROP POLICY "anon read only" ON processing_metrics;
+-- (El dashboard lee processing_metrics server-side via supabaseAdmin en /api/jobs)
+
+-- TODO (cuando el dashboard migre a server components):
+-- La política "anon read only" ON projects con USING(true) expone todos los proyectos
+-- (nombres, teléfonos, keys de R2) a cualquier cliente con la anon key.
+-- Migración pendiente:
+--
+--   DROP POLICY "anon read only" ON projects;
+--   CREATE POLICY "anon read delivered only" ON projects
+--     FOR SELECT TO anon
+--     USING (status = 'delivered' AND deleted_at IS NULL);
+--
+-- Requiere mover el dashboard y proyecto/[id]/page.tsx a server components
+-- que usen supabaseAdmin() en lugar del cliente anon.
+-- El tour/[slug]/page.tsx ya usa supabaseAdmin() y no requiere la política anon.

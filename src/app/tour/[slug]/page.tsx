@@ -1,17 +1,12 @@
-import { createClient } from '@supabase/supabase-js'
 import { notFound } from 'next/navigation'
+import { supabaseAdmin } from '@/lib/supabase'
 import TourViewer from './TourViewer'
 
-// Server component — carga datos del proyecto
+// Server component — usa service role para no exponer datos de proyectos via anon key
 export default async function TourPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
-  const { data: project } = await supabase
+  const { data: project } = await supabaseAdmin()
     .from('projects')
     .select('name, client_name, spz_r2_key, delivered_at, contact_phone, is_locked')
     .eq('slug', slug)
