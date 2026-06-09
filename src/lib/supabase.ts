@@ -7,6 +7,7 @@ export type ProjectStatus =
   | 'reprocessing'
   | 'delivered'
   | 'failed'
+  | 'deleted'
 
 export type ProjectQuality = 'standard' | 'hq'
 
@@ -30,6 +31,7 @@ export interface Project {
   notes: string | null
   contact_phone: string | null
   is_locked: boolean
+  deleted_at: string | null
 }
 
 // Genera el código incremental: SPL-CDMX-00001-A
@@ -65,6 +67,7 @@ export const STATUS_LABELS: Record<ProjectStatus, string> = {
   reprocessing:  'Reprocesando en alta calidad',
   delivered:     'Entregado',
   failed:        'Error',
+  deleted:       'Eliminado',
 }
 
 export const STATUS_COLORS: Record<ProjectStatus, string> = {
@@ -74,6 +77,7 @@ export const STATUS_COLORS: Record<ProjectStatus, string> = {
   reprocessing: 'text-purple-500',
   delivered:    'text-gray-500',
   failed:       'text-red-500',
+  deleted:      'text-gray-700',
 }
 
 // Cliente browser — lazy para evitar errores en la evaluación del módulo

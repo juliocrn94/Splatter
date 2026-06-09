@@ -39,7 +39,10 @@ export async function PATCH(
   return NextResponse.json({ project: data })
 }
 
-// DELETE /api/projects/[id] — eliminar proyecto
+// DELETE /api/projects/[id] — soft delete
+// El registro NUNCA se borra físicamente para preservar el project_code
+// y mantener el contador de identificadores monotónico.
+// El proyecto queda con status='deleted' y deleted_at timestamp.
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -52,7 +55,7 @@ export async function DELETE(
 
   const { data: project, error: fetchErr } = await db
     .from('projects')
-    .select('id, status')
+    .select('id, status, project_code')
     .eq('id', id)
     .single()
 
@@ -62,17 +65,27 @@ export async function DELETE(
 
   if (project.status === 'processing' || project.status === 'reprocessing') {
     return NextResponse.json(
-      { error: `No se puede eliminar un proyecto en estado "${project.status}"` },
+      { error: `No se puede eliminar un proyecto en procesamiento. Espera a que termine o usa el watchdog.` },
       { status: 409 }
     )
   }
 
-  const { error } = await db.from('projects').delete().eq('id', id)
+  if (project.status === 'deleted') {
+    return NextResponse.json({ ok: true }) // idempotente
+  }
+
+  // Soft delete: marca como eliminado, nunca borra el registro
+  const { error } = await db.from('projects').update({
+    status:     'deleted',
+    deleted_at: new Date().toISOString(),
+    is_locked:  true, // bloquear el tour público automáticamente
+  }).eq('id', id)
 
   if (error) {
-    console.error('[DELETE /api/projects/:id]', { id, error: error.message })
+    console.error('[DELETE /api/projects/:id]', { id, projectCode: project.project_code, error: error.message })
     return NextResponse.json({ error: 'No se pudo eliminar el proyecto' }, { status: 500 })
   }
 
+  console.log('[DELETE /api/projects/:id] Soft delete:', { id, projectCode: project.project_code })
   return NextResponse.json({ ok: true })
 }

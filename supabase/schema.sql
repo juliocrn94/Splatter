@@ -75,3 +75,15 @@ CREATE INDEX IF NOT EXISTS projects_project_code_idx ON projects (project_code);
 -- Design review additions
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_phone TEXT;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT false;
+
+-- Soft delete: los proyectos nunca se borran físicamente
+-- El project_code queda en la DB para siempre — el contador es monotónico
+ALTER TABLE projects
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ,
+  DROP CONSTRAINT IF EXISTS projects_status_check,
+  ADD CONSTRAINT projects_status_check CHECK (
+    status IN ('uploading','processing','reviewing','reprocessing','delivered','failed','deleted')
+  );
+
+-- Índice para filtrar deleted eficientemente
+CREATE INDEX IF NOT EXISTS projects_deleted_at_idx ON projects (deleted_at) WHERE deleted_at IS NULL;

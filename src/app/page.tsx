@@ -20,6 +20,7 @@ export default function HomePage() {
     supabase
       .from('projects')
       .select('*')
+      .neq('status', 'deleted')
       .order('created_at', { ascending: false })
       .then(({ data }) => { setProjects(data ?? []); setLoading(false) })
 
@@ -30,7 +31,7 @@ export default function HomePage() {
           setProjects((prev) => [payload.new as Project, ...prev])
         } else if (payload.eventType === 'UPDATE') {
           setProjects((prev) =>
-            prev.map((p) => p.id === (payload.new as Project).id ? payload.new as Project : p)
+            prev.map((p) => p.id === (payload.new as Project).id ? payload.new as Project : p).filter((p) => p.status !== 'deleted')
           )
         } else if (payload.eventType === 'DELETE') {
           setProjects((prev) => prev.filter((p) => p.id !== (payload.old as Project).id))
