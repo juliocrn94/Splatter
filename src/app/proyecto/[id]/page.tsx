@@ -135,6 +135,7 @@ export default function ProyectoPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [codeCopied, setCodeCopied] = useState(false)
   const [estimatedMin, setEstimatedMin] = useState<number | null>(null)
+  const [retrying, setRetrying] = useState(false)
 
   useEffect(() => {
     fetchEstimatedMinutes().then(setEstimatedMin)
@@ -166,14 +167,20 @@ export default function ProyectoPage() {
 
   async function handleRetry() {
     if (!project) return
+    setRetrying(true)
     try {
       const res = await fetch(`/api/projects/${id}/retry`, { method: 'POST' })
       if (!res.ok) throw new Error('Error al reintentar')
       const { reused } = await res.json()
-      // Si el video ya estaba en R2, se re-despachó directo — quedarse en esta página
-      if (!reused) router.push('/nuevo')
+      if (!reused) {
+        router.push('/nuevo')
+        return
+      }
+      // Actualización optimista: mostrar "procesando" sin esperar Realtime
+      setProject(prev => prev ? { ...prev, status: 'processing', error_message: null } : prev)
     } catch {
       alert('No se pudo reiniciar el proyecto.')
+      setRetrying(false)
     }
   }
 
@@ -269,9 +276,12 @@ export default function ProyectoPage() {
             <p className="text-red-200/70 text-sm">{project.error_message}</p>
             <button
               onClick={handleRetry}
-              className="mt-4 bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              disabled={retrying}
+              className="mt-4 bg-red-700 hover:bg-red-600 disabled:bg-gray-800 disabled:text-gray-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             >
-              {project.video_r2_key ? 'Reintentar' : 'Subir nuevo video'}
+              {retrying
+                ? 'Iniciando reprocesamiento...'
+                : project.video_r2_key ? 'Reintentar' : 'Subir nuevo video'}
             </button>
           </div>
         )}
