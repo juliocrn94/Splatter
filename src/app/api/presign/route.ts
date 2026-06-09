@@ -15,7 +15,7 @@ const ALLOWED_MIME_TYPES = [
 ]
 
 export async function POST(req: NextRequest) {
-  const authError = requireAuth(req)
+  const authError = await requireAuth(req)
   if (authError) return authError
 
   const { filename, contentType, sizeBytes } = await req.json()

@@ -5,7 +5,7 @@ import { requireAuth } from '@/lib/auth'
 const ALLOWED_CITIES = ['CDMX', 'GDL', 'MTY', 'QRO', 'PUE', 'MER', 'CUN', 'TIJ', 'LEO', 'SLP']
 
 export async function POST(req: NextRequest) {
-  const authError = requireAuth(req)
+  const authError = await requireAuth(req)
   if (authError) return authError
 
   const { name, clientName, city = 'CDMX' } = await req.json()

@@ -12,14 +12,13 @@ function isPublic(pathname: string): boolean {
   )
 }
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   if (isPublic(pathname)) return NextResponse.next()
 
-  // La cookie operator_token almacena la contraseña del operador (httpOnly + secure + sameSite=strict)
   const token = req.cookies.get('operator_token')?.value
-  if (token && isValidSession(token)) return NextResponse.next()
+  if (token && (await isValidSession(token))) return NextResponse.next()
 
   const loginUrl = new URL('/login', req.url)
   loginUrl.searchParams.set('next', pathname)

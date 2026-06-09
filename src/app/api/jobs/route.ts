@@ -6,7 +6,7 @@ import { requireAuth } from '@/lib/auth'
 const DISPATCHABLE_STATUSES = ['uploading', 'reviewing', 'failed']
 
 export async function POST(req: NextRequest) {
-  const authError = requireAuth(req)
+  const authError = await requireAuth(req)
   if (authError) return authError
 
   const { projectId, videoKey, quality: rawQuality = 'standard' } = await req.json()

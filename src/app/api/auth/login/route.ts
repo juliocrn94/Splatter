@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   }
 
   const token = randomUUID()
-  addSession(token)
+  await addSession(token)
 
   const isProd   = process.env.NODE_ENV === 'production'
   const response = NextResponse.json({ ok: true })
