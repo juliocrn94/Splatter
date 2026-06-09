@@ -1,4 +1,4 @@
-name: Build & Push Docker to RunPod
+name: Build & Push Docker
 
 on:
   workflow_dispatch:
@@ -10,15 +10,19 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Login to RunPod Registry
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: registry.runpod.net
-          username: ${{ secrets.RUNPOD_REGISTRY_USER }}
-          password: ${{ secrets.RUNPOD_REGISTRY_PASS }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         uses: docker/build-push-action@v5
@@ -27,5 +31,5 @@ jobs:
           file: ./docker/Dockerfile
           push: true
           tags: |
-            registry.runpod.net/juliocrn94-splatter-main-docker-dockerfile:${{ github.sha }}
-            registry.runpod.net/juliocrn94-splatter-main-docker-dockerfile:latest
+            ghcr.io/juliocrn94/splatter:${{ github.sha }}
+            ghcr.io/juliocrn94/splatter:latest
