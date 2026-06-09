@@ -167,8 +167,11 @@ export default function ProyectoPage() {
   async function handleRetry() {
     if (!project) return
     try {
-      await fetch(`/api/projects/${id}/retry`, { method: 'POST' })
-      router.push(`/nuevo?retry=${id}`)
+      const res = await fetch(`/api/projects/${id}/retry`, { method: 'POST' })
+      if (!res.ok) throw new Error('Error al reintentar')
+      const { reused } = await res.json()
+      // Si el video ya estaba en R2, se re-despachó directo — quedarse en esta página
+      if (!reused) router.push('/nuevo')
     } catch {
       alert('No se pudo reiniciar el proyecto.')
     }
@@ -268,7 +271,7 @@ export default function ProyectoPage() {
               onClick={handleRetry}
               className="mt-4 bg-red-700 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             >
-              Reintentar con nuevo video
+              {project.video_r2_key ? 'Reintentar' : 'Subir nuevo video'}
             </button>
           </div>
         )}
