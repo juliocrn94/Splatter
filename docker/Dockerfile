@@ -16,7 +16,7 @@ RUN wget -q "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin" \
     -O /opt/vocab_tree.bin
 
 # Python packages
-RUN pip3 install --no-cache-dir runpod boto3 pillow numpy requests spz
+RUN pip3 install --no-cache-dir runpod boto3 pillow numpy requests
 
 # LibTorch para compilar OpenSplat (CUDA 12.1)
 RUN wget -q \
