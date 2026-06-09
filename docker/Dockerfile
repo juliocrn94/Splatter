@@ -2,11 +2,13 @@ FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Sistema base + COLMAP desde apt (Ubuntu 22.04 lo incluye)
+# Sistema base + COLMAP + dependencias de ply_to_spz
 RUN apt-get update && apt-get install -y \
     colmap \
     ffmpeg \
-    cmake ninja-build wget unzip \
+    cmake ninja-build wget unzip git \
+    g++ \
+    zlib1g-dev libzstd-dev \
     python3 python3-pip \
     libopencv-dev \
     libboost-program-options-dev libboost-filesystem-dev \
@@ -19,14 +21,24 @@ RUN wget -q "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin" \
 # Python packages
 RUN pip3 install --no-cache-dir runpod boto3 pillow numpy requests
 
-# LibTorch — descargar y extraer (separado para ver si falla)
+# ply_to_spz — convierte .ply → .spz (nianticlabs/spz, C++ con CMake)
+# El binario se llama ply_to_spz, no ply2spz
+RUN git clone --depth=1 https://github.com/nianticlabs/spz.git /tmp/spz && \
+    cd /tmp/spz && \
+    cmake -B build -DSPZ_BUILD_TOOLS=ON -DCMAKE_BUILD_TYPE=Release . && \
+    cmake --build build --parallel && \
+    cp build/cli_tools/ply_to_spz /usr/local/bin/ply_to_spz && \
+    rm -rf /tmp/spz && \
+    echo "ply_to_spz OK"
+
+# LibTorch
 RUN wget -v \
     "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu121.zip" \
     -O /tmp/libtorch.zip
 RUN unzip -q /tmp/libtorch.zip -d /opt && rm /tmp/libtorch.zip && \
     echo "LibTorch OK: $(ls /opt/libtorch/share/cmake/Torch)"
 
-# OpenSplat — descargar tarball
+# OpenSplat — descargar y compilar
 RUN wget -v \
     "https://github.com/pierotofy/OpenSplat/archive/refs/tags/v1.1.4.tar.gz" \
     -O /tmp/opensplat.tar.gz && \
@@ -34,7 +46,6 @@ RUN wget -v \
     mv /tmp/OpenSplat-1.1.4 /tmp/opensplat && \
     echo "OpenSplat src OK"
 
-# OpenSplat — compilar
 RUN cd /tmp/opensplat && mkdir build && cd build && \
     cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_PREFIX_PATH=/opt/libtorch && \

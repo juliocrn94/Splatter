@@ -152,6 +152,8 @@ export default function ProyectoPage() {
   const [codeCopied, setCodeCopied] = useState(false)
   const [estimatedMin, setEstimatedMin] = useState<number | null>(null)
   const [retrying, setRetrying] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState<string | null>(null)
 
   useEffect(() => {
     fetchEstimatedMinutes().then(setEstimatedMin)
@@ -178,8 +180,48 @@ export default function ProyectoPage() {
       })
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    // Polling de respaldo cada 30s — por si Supabase Realtime pierde el evento del webhook
+    const poll = setInterval(async () => {
+      const { data } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', id)
+        .single()
+      if (!data) return
+      const updated = data as Project
+      setProject(prev => {
+        if (prev?.status === updated.status) return prev
+        if (updated.status === 'reviewing') router.push(`/proyecto/${id}/revisar`)
+        if (updated.status === 'delivered')  router.push(`/proyecto/${id}/entrega`)
+        return updated
+      })
+    }, 30000)
+
+    return () => {
+      supabase.removeChannel(channel)
+      clearInterval(poll)
+    }
   }, [id, router])
+
+  async function handleSyncStatus() {
+    setSyncing(true)
+    setSyncMessage(null)
+    try {
+      const res = await fetch(`/api/projects/${id}/sync-status`, { method: 'POST' })
+      const data = await res.json()
+      if (data.synced) {
+        setSyncMessage(`Estado actualizado: ${data.action}`)
+      } else {
+        setSyncMessage(data.runpodStatus
+          ? `RunPod: ${data.runpodStatus} — el job sigue en progreso`
+          : (data.reason ?? 'No se pudo consultar RunPod'))
+      }
+    } catch {
+      setSyncMessage('Error al verificar estado')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   async function handleRetry() {
     if (!project) return
@@ -269,10 +311,21 @@ export default function ProyectoPage() {
             <ProcessingProgress startedAt={project.processing_started_at} estimatedMin={estimatedMin} key={project.processing_started_at ?? 'processing'} />
             <div className="mt-4 bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-sm">
               <p className="text-gray-400">✓ Puedes cerrar esta página. El procesamiento continúa en segundo plano.</p>
-              <div className="flex gap-3 mt-3">
+              <div className="flex gap-3 mt-3 flex-wrap items-center">
                 <a href="/" className="text-violet-400 hover:text-violet-300 text-sm">← Volver al dashboard</a>
                 <a href="/nuevo" className="text-violet-400 hover:text-violet-300 text-sm">+ Subir otro proyecto</a>
+                <button
+                  onClick={handleSyncStatus}
+                  disabled={syncing}
+                  className="text-gray-500 hover:text-gray-300 text-xs disabled:opacity-50 ml-auto"
+                  title="Consulta RunPod directamente para actualizar el estado"
+                >
+                  {syncing ? 'Verificando...' : '¿Tardando mucho? Verificar estado'}
+                </button>
               </div>
+              {syncMessage && (
+                <p className="text-xs text-gray-500 mt-2 border-t border-gray-800 pt-2">{syncMessage}</p>
+              )}
             </div>
           </>
         )}

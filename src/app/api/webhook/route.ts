@@ -88,10 +88,14 @@ export async function POST(req: NextRequest) {
       console.error('[/api/webhook] Error al guardar métricas (no crítico):', metricsErr)
     }
   } else {
-    console.error('[/api/webhook] Job fallido:', { projectId: project.id, error, runpodJobId })
+    // RunPod envía `error` como string cuando el handler lanza una excepción.
+    // El formato es "CODIGO: mensaje" — extraemos el código del prefijo.
+    const errorStr  = typeof error === 'string' ? error : (error as Record<string, unknown>)?.code as string
+    const errorCode = errorStr ? errorStr.split(':')[0]?.trim() : undefined
+    console.error('[/api/webhook] Job fallido:', { projectId: project.id, error, errorCode, runpodJobId })
     await db.from('projects').update({
       status:        'failed',
-      error_message: getErrorMessage(error?.code),
+      error_message: getErrorMessage(errorCode),
     }).eq('id', project.id)
   }
 
