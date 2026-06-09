@@ -1,5 +1,5 @@
 const attempts = new Map()
-export function checkRateLimit(ip) {
+export function checkRateLimit(ip: string) {
   const now = Date.now()
   const window = 15 * 60 * 1000
   const key = ip || "unknown"

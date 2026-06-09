@@ -90,6 +90,35 @@ fi
 FRAME_COUNT=$(ls "$WORKDIR/frames/" | wc -l | tr -d ' ')
 echo "  → $REMOVED frames borrosos eliminados, quedan $FRAME_COUNT"
 
+# Filtro de transición brusca — elimina frames con cambio abrupto de escena
+echo "  → Filtrando transiciones bruscas..."
+SCENE_REMOVED=0
+PREV_BRIGHTNESS=""
+for f in "$WORKDIR/frames/"*.jpg; do
+  BRIGHTNESS=$(ffmpeg -i "$f" -vf "signalstats" -f null - 2>&1 | grep "YAVG" | tail -1 | grep -o '[0-9]*\.[0-9]*' | head -1)
+  BRIGHTNESS=${BRIGHTNESS:-128}
+  if [ -n "$PREV_BRIGHTNESS" ]; then
+    DIFF=$(echo "$BRIGHTNESS $PREV_BRIGHTNESS" | awk '{d=$1-$2; if(d<0)d=-d; printf "%d", d}')
+    if [ "${DIFF:-0}" -gt 40 ] 2>/dev/null; then
+      rm -f "$f"
+      SCENE_REMOVED=$(( SCENE_REMOVED + 1 ))
+    else
+      PREV_BRIGHTNESS=$BRIGHTNESS
+    fi
+  else
+    PREV_BRIGHTNESS=$BRIGHTNESS
+  fi
+done
+FRAME_COUNT=$(ls "$WORKDIR/frames/" | wc -l | tr -d ' ')
+echo "  → $SCENE_REMOVED frames de transición eliminados, quedan $FRAME_COUNT"
+
+# Normalización de exposición — reduce variaciones de brillo entre frames
+echo "  → Normalizando exposición entre frames..."
+for f in "$WORKDIR/frames/"*.jpg; do
+  ffmpeg -i "$f" -vf "histeq=strength=0.15:intensity=0.15" -y "${f}.eq.jpg" 2>/dev/null && mv "${f}.eq.jpg" "$f" || true
+done
+echo "  → Normalización completada"
+
 # Cap de frames: máximo 400 en modo standard
 if [ "$QUALITY" = "standard" ] && [ "$FRAME_COUNT" -gt "$MAX_FRAMES" ]; then
   echo "  → Modo standard: submuestreando a $MAX_FRAMES frames (de $FRAME_COUNT)..."
