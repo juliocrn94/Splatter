@@ -18,25 +18,29 @@ RUN wget -q "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin" \
 # Python packages
 RUN pip3 install --no-cache-dir runpod boto3 pillow numpy requests
 
-# LibTorch para compilar OpenSplat (CUDA 12.1)
-RUN wget -q \
+# LibTorch — descargar y extraer (separado para ver si falla)
+RUN wget -v \
     "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu121.zip" \
-    -O /tmp/libtorch.zip && \
-    unzip -q /tmp/libtorch.zip -d /opt && \
-    rm /tmp/libtorch.zip
+    -O /tmp/libtorch.zip
+RUN unzip -q /tmp/libtorch.zip -d /opt && rm /tmp/libtorch.zip && \
+    echo "LibTorch OK: $(ls /opt/libtorch/share/cmake/Torch)"
 
-# OpenSplat — tarball desde GitHub Releases (sin git clone)
-RUN wget -q \
+# OpenSplat — descargar tarball
+RUN wget -v \
     "https://github.com/pierotofy/OpenSplat/archive/refs/tags/v1.1.4.tar.gz" \
     -O /tmp/opensplat.tar.gz && \
     tar xzf /tmp/opensplat.tar.gz -C /tmp && \
     mv /tmp/OpenSplat-1.1.4 /tmp/opensplat && \
-    cd /tmp/opensplat && mkdir build && cd build && \
+    echo "OpenSplat src OK"
+
+# OpenSplat — compilar
+RUN cd /tmp/opensplat && mkdir build && cd build && \
     cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
         -DTORCH_DIR=/opt/libtorch/share/cmake/Torch && \
     ninja opensplat && \
     cp opensplat /usr/local/bin/ && \
-    rm -rf /tmp/opensplat /tmp/opensplat.tar.gz
+    rm -rf /tmp/opensplat /tmp/opensplat.tar.gz && \
+    echo "OpenSplat binary OK"
 
 # Archivos del pipeline
 COPY docker/process_splat.sh /opt/process_splat.sh
