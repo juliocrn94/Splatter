@@ -154,14 +154,29 @@ Transiciones de estado controladas server-side:
 8. Output keys (`ply_r2_key`, `spz_r2_key`) guardadas al despachar el job, no al recibir el webhook
 9. Auth de operador via cookie httpOnly + middleware — sin Supabase Auth para simplicidad del MVP
 
+## Estado de producción
+
+- **URL:** https://splatter-two.vercel.app
+- **Login:** contraseña en `.env.local` como `OPERATOR_PASSWORD`
+- **Deploy:** `vercel --prod --yes` desde la raíz del proyecto (auto-deploy GitHub está bloqueado por email mismatch)
+- **GitHub:** repo `juliocrn94/Splatter` — email correcto: `juliocrn94@gmail.com` (global config)
+
+## Bugs conocidos / fixes recientes
+- Webhook URL corregido: `/api/webhook` (era `/api/webhook/runpod` — causaba jobs que nunca completaban)
+- generateProjectCode usa MAX en lugar de COUNT (evitaba colisión con códigos eliminados)
+- Soft delete implementado: proyectos nunca se borran, `project_code` nunca se reutiliza
+- Sessions en Supabase (no in-memory) para sobrevivir cold starts de Vercel serverless
+
 ## Próximas features (Fase 2 del roadmap)
 
-Ver PLAN.md para contexto completo. Prioridad de build:
+Ver PLAN.md para contexto completo con user stories y criterios de validación.
 
-1. **Editor integrado** — reemplazar viewer read-only en `/revisar` con SuperSplat editor real (permite recortar, limpiar, ajustar recorrido sin salir del dashboard)
-2. **Upload multi-fuente** — `/nuevo` acepta múltiples videos (DSLR + celular + dron), todos van al mismo COLMAP run. UX: "Video principal" + "Videos adicionales de detalle"
-3. **Corrección post-QC** — botón "Mejorar zona específica" en `/revisar` → sube video adicional → pipeline combina con captura original
-4. **Mejoras al pipeline**: exposure normalization, scene change filter, adaptive densification
+Prioridad para `/autoplan`:
+1. **2A — Editor integrado** — SuperSplat editor en `/revisar` (recortar, limpiar, ajustar recorrido)
+2. **2B — Upload multi-fuente** — múltiples videos en un COLMAP run + guía UX de overlap
+3. **2C — Corrección post-QC** — agregar frames a proyecto existente (incrementa versión A→B→C)
+4. **2D — Estimador de tiempo real** — basado en métricas de proyectos pasados
+5. **3A — Portal white-label** — analytics, lock/unlock tour, WhatsApp CTA (parcialmente hecho)
 
 ## Estado del build
 
