@@ -6,10 +6,24 @@ import { useDropzone } from 'react-dropzone'
 import { supabase } from '@/lib/supabase'
 import { getUploadWarning } from '@/lib/r2'
 
+const CIUDADES = [
+  { code: 'CDMX', label: 'Ciudad de México' },
+  { code: 'GDL',  label: 'Guadalajara' },
+  { code: 'MTY',  label: 'Monterrey' },
+  { code: 'PUE',  label: 'Puebla' },
+  { code: 'QRO',  label: 'Querétaro' },
+  { code: 'CUN',  label: 'Cancún' },
+  { code: 'MID',  label: 'Mérida' },
+  { code: 'TIJ',  label: 'Tijuana' },
+  { code: 'SLP',  label: 'San Luis Potosí' },
+  { code: 'OTR',  label: 'Otra ciudad' },
+]
+
 export default function NuevoPage() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [clientName, setClientName] = useState('')
+  const [city, setCity] = useState('CDMX')
   const [file, setFile] = useState<File | null>(null)
   const [warning, setWarning] = useState<ReturnType<typeof getUploadWarning> | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -51,7 +65,7 @@ export default function NuevoPage() {
       const createRes = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, clientName }),
+        body: JSON.stringify({ name, clientName, city }),
       })
       if (!createRes.ok) throw new Error('No se pudo crear el proyecto')
       const { project } = await createRes.json()
@@ -136,6 +150,22 @@ export default function NuevoPage() {
               required
               className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-violet-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Ciudad</label>
+            <select
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-violet-500"
+            >
+              {CIUDADES.map((c) => (
+                <option key={c.code} value={c.code}>{c.label} ({c.code})</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-600 mt-1">
+              Se usa para generar el código del proyecto: SPL-{city}-00001-A
+            </p>
           </div>
 
           <div>

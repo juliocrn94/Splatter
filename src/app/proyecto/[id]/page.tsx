@@ -2,28 +2,122 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { supabase, Project, STATUS_LABELS } from '@/lib/supabase'
+import { supabase, Project } from '@/lib/supabase'
 
 const STAGES = [
-  { key: 'uploading',   label: 'Subiendo video' },
-  { key: 'processing',  label: 'Procesando' },
-  { key: 'reviewing',   label: 'Listo para revisar' },
-  { key: 'delivered',   label: 'Entregado' },
+  { key: 'uploading',   label: 'Subiendo video',      estMin: 2  },
+  { key: 'processing',  label: 'Procesando tour 3D',  estMin: 22 },
+  { key: 'reviewing',   label: 'Listo para revisar',  estMin: 0  },
+  { key: 'delivered',   label: 'Entregado',            estMin: 0  },
 ]
 
-const PROCESSING_TIPS = [
-  'Iniciando instancia GPU... (puede tardar 1–3 min)',
-  'Extrayendo frames del video...',
-  'Analizando posiciones de cámara (COLMAP)...',
-  'Entrenando el tour 3D (OpenSplat)...',
-  'Guardando archivos...',
+const PROCESSING_STEPS = [
+  { label: 'Iniciando instancia GPU',    pct: 10, duration: 180  },
+  { label: 'Extrayendo frames del video', pct: 25, duration: 120  },
+  { label: 'Analizando posiciones de cámara (COLMAP)', pct: 55, duration: 360 },
+  { label: 'Entrenando el tour 3D (OpenSplat)', pct: 85, duration: 600 },
+  { label: 'Guardando y optimizando archivos', pct: 95, duration: 120 },
 ]
+
+function formatTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return s > 0 ? `${m}m ${s}s` : `${m}m`
+}
+
+function useElapsed(startedAt: string | null): number {
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!startedAt) return
+    const start = new Date(startedAt).getTime()
+    const update = () => setElapsed(Math.floor((Date.now() - start) / 1000))
+    update()
+    const t = setInterval(update, 1000)
+    return () => clearInterval(t)
+  }, [startedAt])
+  return elapsed
+}
+
+function ProcessingProgress({ startedAt }: { startedAt: string | null }) {
+  const elapsed = useElapsed(startedAt)
+  const totalSec = PROCESSING_STEPS.reduce((a, s) => a + s.duration, 0)
+  const remaining = Math.max(0, totalSec - elapsed)
+
+  // Calcular en qué step estamos
+  let cumulative = 0
+  let currentStep = 0
+  for (let i = 0; i < PROCESSING_STEPS.length; i++) {
+    if (elapsed >= cumulative + PROCESSING_STEPS[i].duration) {
+      cumulative += PROCESSING_STEPS[i].duration
+      currentStep = i + 1
+    } else {
+      break
+    }
+  }
+  currentStep = Math.min(currentStep, PROCESSING_STEPS.length - 1)
+
+  // Progreso suavizado dentro del step actual
+  const stepElapsed = elapsed - cumulative
+  const stepDur = PROCESSING_STEPS[currentStep]?.duration ?? 1
+  const stepPctStart = currentStep === 0 ? 0 : PROCESSING_STEPS[currentStep - 1].pct
+  const stepPctEnd = PROCESSING_STEPS[currentStep]?.pct ?? 100
+  const withinStep = Math.min(stepElapsed / stepDur, 1)
+  const pct = Math.min(Math.round(stepPctStart + (stepPctEnd - stepPctStart) * withinStep), 99)
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+      <div className="flex justify-between text-sm">
+        <span className="text-violet-300 font-medium">
+          {PROCESSING_STEPS[currentStep]?.label ?? 'Procesando...'}
+        </span>
+        <span className="text-gray-500">{pct}%</span>
+      </div>
+
+      {/* Barra principal */}
+      <div className="w-full bg-gray-800 rounded-full h-2.5">
+        <div
+          className="bg-violet-500 h-2.5 rounded-full transition-all duration-1000"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+
+      {/* Steps individuales */}
+      <div className="space-y-1.5 pt-1">
+        {PROCESSING_STEPS.map((step, i) => {
+          const done    = i < currentStep
+          const current = i === currentStep
+          const pending = i > currentStep
+          return (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 text-[10px] font-bold ${
+                done    ? 'bg-green-700 text-white' :
+                current ? 'bg-violet-600 text-white' :
+                          'bg-gray-800 text-gray-600'
+              }`}>
+                {done ? '✓' : i + 1}
+              </span>
+              <span className={pending ? 'text-gray-600' : current ? 'text-gray-300' : 'text-gray-500'}>
+                {step.label}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Tiempo */}
+      <div className="flex justify-between text-xs text-gray-600 pt-1 border-t border-gray-800">
+        <span>Transcurrido: {formatTime(elapsed)}</span>
+        <span>Estimado restante: ~{formatTime(remaining)}</span>
+      </div>
+    </div>
+  )
+}
 
 export default function ProyectoPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [project, setProject] = useState<Project | null>(null)
-  const [tipIdx, setTipIdx] = useState(0)
 
   useEffect(() => {
     supabase
@@ -33,7 +127,6 @@ export default function ProyectoPage() {
       .single()
       .then(({ data }) => setProject(data))
 
-    // Realtime — redirige cuando el estado cambia
     const channel = supabase
       .channel(`project-${id}`)
       .on('postgres_changes', {
@@ -47,23 +140,16 @@ export default function ProyectoPage() {
       })
       .subscribe()
 
-    // Rotar tips de procesamiento cada 18 segundos
-    const timer = setInterval(() => setTipIdx((i) => (i + 1) % PROCESSING_TIPS.length), 18000)
-
-    return () => {
-      supabase.removeChannel(channel)
-      clearInterval(timer)
-    }
+    return () => { supabase.removeChannel(channel) }
   }, [id, router])
 
   async function handleRetry() {
     if (!project) return
     try {
-      const res = await fetch(`/api/projects/${id}/retry`, { method: 'POST' })
-      if (!res.ok) throw new Error('Error al reintentar')
+      await fetch(`/api/projects/${id}/retry`, { method: 'POST' })
       router.push(`/nuevo?retry=${id}`)
     } catch {
-      alert('No se pudo reiniciar el proyecto. Intenta de nuevo.')
+      alert('No se pudo reiniciar el proyecto.')
     }
   }
 
@@ -72,19 +158,25 @@ export default function ProyectoPage() {
   }
 
   const stageIdx = STAGES.findIndex((s) => s.key === project.status)
+  const currentStage = STAGES[stageIdx]
 
   return (
     <div className="min-h-screen bg-gray-950 text-white p-8">
       <div className="max-w-lg mx-auto">
         <a href="/" className="text-gray-500 hover:text-gray-300 text-sm">← Proyectos</a>
 
-        <div className="mt-8 mb-10">
+        <div className="mt-8 mb-8">
           <h1 className="text-xl font-bold">{project.name}</h1>
           <p className="text-gray-400 text-sm mt-1">{project.client_name}</p>
+          {project.project_code && (
+            <span className="inline-block mt-2 text-xs font-mono bg-gray-800 text-violet-300 px-2 py-1 rounded">
+              {project.project_code}
+            </span>
+          )}
         </div>
 
         {/* Stepper */}
-        <div className="space-y-4 mb-10">
+        <div className="space-y-3 mb-8">
           {STAGES.map((stage, i) => {
             const done    = i < stageIdx
             const current = i === stageIdx
@@ -92,27 +184,36 @@ export default function ProyectoPage() {
 
             return (
               <div key={stage.key} className="flex items-center gap-4">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${
                   done    ? 'bg-green-600 text-white' :
                   current ? 'bg-violet-600 text-white animate-pulse' :
                             'bg-gray-800 text-gray-600'
                 }`}>
                   {done ? '✓' : i + 1}
                 </div>
-                <span className={pending ? 'text-gray-600' : current ? 'text-white font-medium' : 'text-gray-300'}>
-                  {stage.label}
-                </span>
+                <div className="flex-1">
+                  <span className={pending ? 'text-gray-600' : current ? 'text-white font-medium' : 'text-gray-400'}>
+                    {stage.label}
+                  </span>
+                  {current && stage.estMin > 0 && (
+                    <span className="ml-2 text-xs text-gray-600">~{stage.estMin} min</span>
+                  )}
+                </div>
               </div>
             )
           })}
         </div>
 
-        {/* Estado procesando */}
+        {/* Progreso detallado cuando está procesando */}
         {project.status === 'processing' && (
-          <div className="bg-gray-900 rounded-xl p-5 text-sm text-gray-400 border border-gray-800">
-            <p className="text-violet-300 font-medium mb-1">⏳ Procesando tu tour 3D</p>
-            <p>{PROCESSING_TIPS[tipIdx]}</p>
-            <p className="text-gray-600 mt-3">Tiempo estimado: 20–25 minutos</p>
+          <ProcessingProgress startedAt={project.processing_started_at} />
+        )}
+
+        {/* Estado uploading */}
+        {project.status === 'uploading' && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 text-sm text-gray-400">
+            <p className="text-blue-300 font-medium mb-1">⬆️ Subiendo video a la nube...</p>
+            <p className="text-gray-600 text-xs mt-2">El procesamiento comenzará automáticamente al terminar</p>
           </div>
         )}
 
