@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     cmake ninja-build wget unzip \
     python3 python3-pip \
+    libopencv-dev \
     libboost-program-options-dev libboost-filesystem-dev \
     && rm -rf /var/lib/apt/lists/*
 
