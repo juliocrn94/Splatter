@@ -87,3 +87,34 @@ ALTER TABLE projects
 
 -- Índice para filtrar deleted eficientemente
 CREATE INDEX IF NOT EXISTS projects_deleted_at_idx ON projects (deleted_at) WHERE deleted_at IS NULL;
+
+-- ─── Fase 2B: video_r2_keys — array de keys para multi-video upload ───────────
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS video_r2_keys JSONB NOT NULL DEFAULT '[]';
+
+-- ─── Fase 2D: métricas de procesamiento para estimador dinámico ───────────────
+CREATE TABLE IF NOT EXISTS processing_metrics (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id            UUID REFERENCES projects(id) ON DELETE CASCADE,
+  created_at            TIMESTAMPTZ DEFAULT NOW(),
+  processing_duration_s INTEGER,      -- segundos totales de GPU
+  video_size_bytes      BIGINT,        -- tamaño del video original
+  frame_count           INTEGER,       -- frames extraídos por FFmpeg
+  quality               TEXT,          -- 'standard' | 'hq'
+  ply_size_bytes        BIGINT,        -- tamaño del .ply generado
+  spz_size_bytes        BIGINT         -- tamaño del .spz generado
+);
+
+-- Índices para la query del estimador (últimas 5 por fecha)
+CREATE INDEX IF NOT EXISTS processing_metrics_created_at_idx
+  ON processing_metrics (created_at DESC);
+CREATE INDEX IF NOT EXISTS processing_metrics_project_id_idx
+  ON processing_metrics (project_id);
+
+-- RLS: anon puede leer (dashboard usa anon key)
+ALTER TABLE processing_metrics ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "anon read only" ON processing_metrics
+  FOR SELECT TO anon USING (true);
+
+CREATE POLICY "service role full access" ON processing_metrics
+  FOR ALL TO service_role USING (true) WITH CHECK (true);

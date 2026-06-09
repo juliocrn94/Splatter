@@ -54,9 +54,35 @@ export async function POST(req: NextRequest) {
 
   if (status === 'COMPLETED') {
     console.log('[/api/webhook] Job completado — marcando proyecto como reviewing:', project.id)
-    await db.from('projects').update({
-      status: 'reviewing',
-    }).eq('id', project.id)
+
+    const { data: fullProject } = await db
+      .from('projects')
+      .select('processing_started_at, quality')
+      .eq('id', project.id)
+      .single()
+
+    await db.from('projects').update({ status: 'reviewing' }).eq('id', project.id)
+
+    // Insertar métricas para el estimador dinámico (2D) — fallo no bloquea el flujo
+    try {
+      const durationS = fullProject?.processing_started_at
+        ? Math.round((Date.now() - new Date(fullProject.processing_started_at).getTime()) / 1000)
+        : null
+
+      await db.from('processing_metrics').insert({
+        project_id:            project.id,
+        processing_duration_s: durationS,
+        quality:               fullProject?.quality ?? 'standard',
+        // Los campos de tamaño vienen del output del worker cuando esté disponible
+        frame_count:           output?.frame_count   ?? null,
+        video_size_bytes:      output?.video_size_bytes ?? null,
+        ply_size_bytes:        output?.ply_size_bytes ?? null,
+        spz_size_bytes:        output?.spz_size_bytes ?? null,
+      })
+      console.log('[/api/webhook] Métricas guardadas:', { projectId: project.id, durationS })
+    } catch (metricsErr) {
+      console.error('[/api/webhook] Error al guardar métricas (no crítico):', metricsErr)
+    }
   } else {
     console.error('[/api/webhook] Job fallido:', { projectId: project.id, error, runpodJobId })
     await db.from('projects').update({

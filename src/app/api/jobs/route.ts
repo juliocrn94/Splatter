@@ -9,19 +9,27 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req)
   if (authError) return authError
 
-  const { projectId, videoKey, quality: rawQuality = 'standard' } = await req.json()
+  const { projectId, videoKey, videoKeys: rawVideoKeys, quality: rawQuality = 'standard' } = await req.json()
 
-  if (!projectId || !videoKey) {
-    return NextResponse.json({ error: 'projectId y videoKey son requeridos' }, { status: 400 })
+  // Normalizar: aceptar videoKey (string, backwards compat) o videoKeys (array, 2B multi-video)
+  const videoKeys: string[] = rawVideoKeys
+    ? (Array.isArray(rawVideoKeys) ? rawVideoKeys : [rawVideoKeys])
+    : videoKey ? [videoKey] : []
+
+  if (!projectId || videoKeys.length === 0) {
+    return NextResponse.json({ error: 'projectId y videoKey(s) son requeridos' }, { status: 400 })
   }
 
   // Validar quality — solo valores conocidos
   const quality = rawQuality === 'hq' ? 'hq' : 'standard'
 
-  // Validar que videoKey tenga el prefijo esperado
-  if (!String(videoKey).startsWith('videos/')) {
+  // Validar que todos los keys tengan el prefijo esperado
+  if (videoKeys.some(k => !String(k).startsWith('videos/'))) {
     return NextResponse.json({ error: 'videoKey inválido' }, { status: 400 })
   }
+
+  // El primer key es el video principal (backwards compat con video_r2_key)
+  const primaryVideoKey = videoKeys[0]
 
   const db = supabaseAdmin()
 
@@ -47,11 +55,13 @@ export async function POST(req: NextRequest) {
   // Pre-generar claves de salida y URLs firmadas para que RunPod suba los archivos sin credenciales
   const plyKey = `results/${projectId}.ply`
   const spzKey = `results/${projectId}.spz`
-  const [videoDownloadUrl, plyUploadUrl, spzUploadUrl] = await Promise.all([
-    getPresignedDownloadUrl(videoKey),
+  const [plyUploadUrl, spzUploadUrl, ...videoDownloadUrls] = await Promise.all([
     getPresignedUploadUrl(plyKey, 'application/octet-stream'),
     getPresignedUploadUrl(spzKey, 'application/octet-stream'),
+    ...videoKeys.map(k => getPresignedDownloadUrl(k)),
   ])
+  // Primer video como video_url principal para compatibilidad con el worker actual
+  const primaryVideoUrl = videoDownloadUrls[0]
 
   const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook`
 
@@ -66,7 +76,8 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         input: {
           project_id:     projectId,
-          video_url:      videoDownloadUrl,
+          video_url:      primaryVideoUrl,
+          video_urls:     videoDownloadUrls,  // array para multi-video (2B)
           quality,
           ply_upload_url: plyUploadUrl,
           spz_upload_url: spzUploadUrl,
@@ -99,7 +110,8 @@ export async function POST(req: NextRequest) {
     status:                newStatus,
     runpod_job_id:         runpodJobId,
     quality,
-    video_r2_key:          videoKey,
+    video_r2_key:          primaryVideoKey,    // backwards compat
+    video_r2_keys:         videoKeys,           // array completo (2B)
     ply_r2_key:            plyKey,
     spz_r2_key:            spzKey,
     processing_started_at: new Date().toISOString(),

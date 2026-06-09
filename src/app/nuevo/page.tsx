@@ -3,8 +3,8 @@
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
-import { supabase } from '@/lib/supabase'
 import { getUploadWarning } from '@/lib/r2'
+import { useVideoUpload } from '@/hooks/useVideoUpload'
 
 const CIUDADES = [
   { code: 'CDMX', label: 'Ciudad de México' },
@@ -19,49 +19,120 @@ const CIUDADES = [
   { code: 'OTR',  label: 'Otra ciudad' },
 ]
 
+const MAX_ADDITIONAL_VIDEOS = 3
+
+function VideoDropzone({
+  label,
+  hint,
+  file,
+  onFile,
+  disabled,
+}: {
+  label: string
+  hint?: string
+  file: File | null
+  onFile: (f: File) => void
+  disabled?: boolean
+}) {
+  const onDrop = useCallback((accepted: File[]) => { if (accepted[0]) onFile(accepted[0]) }, [onFile])
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'video/*': [] },
+    maxFiles: 1,
+    disabled,
+  })
+
+  return (
+    <div>
+      <label className="block text-sm text-gray-400 mb-2">{label}</label>
+      {hint && <p className="text-xs text-gray-600 mb-2">{hint}</p>}
+      <div
+        {...getRootProps()}
+        className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-colors ${
+          disabled    ? 'border-gray-800 opacity-40 cursor-not-allowed' :
+          isDragActive ? 'border-violet-500 bg-violet-950/20' :
+          file         ? 'border-green-600 bg-green-950/20' :
+                         'border-gray-700 hover:border-gray-600'
+        }`}
+      >
+        <input {...getInputProps()} />
+        {file ? (
+          <div>
+            <p className="text-green-400 font-medium text-sm truncate">{file.name}</p>
+            <p className="text-gray-500 text-xs mt-1">{(file.size / (1024 ** 3)).toFixed(2)} GB</p>
+          </div>
+        ) : (
+          <div>
+            <p className="text-gray-400 text-sm">Arrastra el video aquí</p>
+            <p className="text-gray-600 text-xs mt-1">MP4, MOV, AVI · Máx 4 GB</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function UploadBar({ label, progress, error }: { label: string; progress: number; error: string }) {
+  if (error) return <p className="text-red-400 text-xs">{label}: {error}</p>
+  if (progress === 0) return null
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs text-gray-400">
+        <span>{label}</span>
+        <span>{progress}%</span>
+      </div>
+      <div className="w-full bg-gray-800 rounded-full h-1.5">
+        <div className="bg-violet-500 h-1.5 rounded-full transition-all duration-300" style={{ width: `${progress}%` }} />
+      </div>
+    </div>
+  )
+}
+
 export default function NuevoPage() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [clientName, setClientName] = useState('')
   const [city, setCity] = useState('CDMX')
-  const [file, setFile] = useState<File | null>(null)
-  const [warning, setWarning] = useState<ReturnType<typeof getUploadWarning> | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
+
+  // Video principal
+  const [mainFile, setMainFile] = useState<File | null>(null)
+  const [mainWarning, setMainWarning] = useState<ReturnType<typeof getUploadWarning> | null>(null)
+
+  // Videos adicionales (2B) — máximo 3
+  const [additionalFiles, setAdditionalFiles] = useState<(File | null)[]>([null, null, null])
+  const [showOverlapTip, setShowOverlapTip] = useState(false)
+
+  const mainUpload = useVideoUpload()
+  const additionalUploads = [useVideoUpload(), useVideoUpload(), useVideoUpload()]
+
+  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  const onDrop = useCallback((accepted: File[]) => {
-    const f = accepted[0]
-    if (!f) return
-    setFile(f)
-    setWarning(getUploadWarning(f.size))
+  function handleMainFile(f: File) {
+    setMainFile(f)
+    setMainWarning(getUploadWarning(f.size))
     setError('')
-  }, [])
+  }
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: { 'video/*': [] },
-    maxFiles: 1,
-  })
+  function handleAdditionalFile(index: number, f: File) {
+    setAdditionalFiles(prev => prev.map((existing, i) => i === index ? f : existing))
+    if (index === 0) setShowOverlapTip(true)
+    setError('')
+  }
+
+  const uploadingAny = mainUpload.uploading || additionalUploads.some(u => u.uploading)
+  const activeAdditionals = additionalFiles.filter(Boolean).length
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!file || !name || !clientName) return
-    if (warning?.blocked) return
+    if (!mainFile || !name || !clientName) return
+    if (mainWarning?.blocked) return
 
-    setUploading(true)
+    setSubmitting(true)
     setError('')
 
     try {
-      // 1. Crear el proyecto en Supabase
-      const slug = name
-        .toLowerCase()
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        + '-' + Date.now().toString(36)
-
-      // 1. Crear proyecto via API (genera project_code incremental server-side)
+      // 1. Crear proyecto
       const createRes = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -71,51 +142,32 @@ export default function NuevoPage() {
       const { project } = await createRes.json()
       if (!project) throw new Error('No se pudo crear el proyecto')
 
-      // 2. Eliminar slug local (ya viene del server), obtener presigned URL
-      const presignRes = await fetch('/api/presign', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          filename:    file.name,
-          contentType: file.type,
-          sizeBytes:   file.size,
-        }),
-      })
+      // 2. Subir video principal
+      const { key: mainKey } = await mainUpload.upload(mainFile)
 
-      if (!presignRes.ok) {
-        const { error: msg } = await presignRes.json()
-        throw new Error(msg)
-      }
+      // 3. Subir videos adicionales en paralelo
+      const additionalToUpload = additionalFiles
+        .map((f, i) => f ? { file: f, uploader: additionalUploads[i] } : null)
+        .filter((x): x is { file: File; uploader: ReturnType<typeof useVideoUpload> } => x !== null)
 
-      const { url, key } = await presignRes.json()
+      const additionalKeys = await Promise.all(
+        additionalToUpload.map(({ file, uploader }) => uploader.upload(file).then(r => r.key))
+      )
 
-      // 3. Subir video DIRECTO a R2 (no pasa por Vercel)
-      const xhr = new XMLHttpRequest()
-      xhr.upload.addEventListener('progress', (ev) => {
-        if (ev.lengthComputable) setProgress(Math.round((ev.loaded / ev.total) * 100))
-      })
+      const allVideoKeys = [mainKey, ...additionalKeys]
 
-      await new Promise<void>((resolve, reject) => {
-        xhr.open('PUT', url)
-        xhr.setRequestHeader('Content-Type', file.type)
-        xhr.onload = () => xhr.status < 300 ? resolve() : reject(new Error('Error al subir el video'))
-        xhr.onerror = () => reject(new Error('Error de red al subir el video'))
-        xhr.send(file)
-      })
-
-      // 4. Disparar pipeline de procesamiento
+      // 4. Disparar pipeline
       const jobRes = await fetch('/api/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: project.id, videoKey: key }),
+        body: JSON.stringify({ projectId: project.id, videoKeys: allVideoKeys }),
       })
-
       if (!jobRes.ok) throw new Error('No se pudo iniciar el procesamiento')
 
       router.push(`/proyecto/${project.id}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error desconocido')
-      setUploading(false)
+      setSubmitting(false)
     }
   }
 
@@ -164,90 +216,84 @@ export default function NuevoPage() {
               ))}
             </select>
             <p className="text-xs text-gray-600 mt-1">
-              Se usa para generar el código del proyecto: SPL-{city}-00001-A
+              Código del proyecto: SPL-{city}-00001-A
             </p>
           </div>
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-2">Video de la propiedad</label>
-            <div
-              {...getRootProps()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                isDragActive
-                  ? 'border-violet-500 bg-violet-950/20'
-                  : file
-                  ? 'border-green-600 bg-green-950/20'
-                  : 'border-gray-700 hover:border-gray-600'
-              }`}
-            >
-              <input {...getInputProps()} />
-              {file ? (
-                <div>
-                  <p className="text-green-400 font-medium">{file.name}</p>
-                  <p className="text-gray-500 text-sm mt-1">
-                    {(file.size / (1024 ** 3)).toFixed(2)} GB
-                  </p>
-                </div>
-              ) : (
-                <div>
-                  <p className="text-gray-400">Arrastra el video aquí</p>
-                  <p className="text-gray-600 text-sm mt-1">o haz clic para seleccionar</p>
-                  <p className="text-gray-700 text-xs mt-3">MP4, MOV, AVI · Máx 4 GB</p>
+          {/* Video principal */}
+          <VideoDropzone
+            label="Video principal"
+            file={mainFile}
+            onFile={handleMainFile}
+            disabled={uploadingAny}
+          />
+
+          {mainWarning?.warning && (
+            <div className="bg-amber-950/40 border border-amber-700 rounded-lg p-4">
+              <p className="text-amber-400 font-medium text-sm">⚠️ Video grande detectado</p>
+              <p className="text-amber-200/70 text-sm mt-1">
+                Tardará aprox. <strong>{mainWarning.estimatedMinutes} min</strong> y costará{' '}
+                <strong>${mainWarning.estimatedCostUSD} USD</strong> en GPU.
+              </p>
+            </div>
+          )}
+
+          {mainWarning?.blocked && (
+            <div className="bg-red-950/40 border border-red-700 rounded-lg p-4">
+              <p className="text-red-400 font-medium text-sm">Video demasiado grande</p>
+              <p className="text-red-200/70 text-sm mt-1">Máximo 4 GB por video.</p>
+            </div>
+          )}
+
+          {/* Videos adicionales (2B) */}
+          {mainFile && !mainWarning?.blocked && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-gray-400">Videos adicionales <span className="text-gray-600">(opcional)</span></label>
+                <span className="text-xs text-gray-600">{activeAdditionals}/{MAX_ADDITIONAL_VIDEOS}</span>
+              </div>
+
+              {showOverlapTip && (
+                <div className="bg-blue-950/30 border border-blue-800 rounded-lg px-4 py-3 text-xs text-blue-300">
+                  <strong>Overlap requerido:</strong> cada video adicional debe compartir al menos 30 segundos de perspectiva con el video anterior — COLMAP necesita puntos en común para alinear las cámaras.
                 </div>
               )}
+
+              {Array.from({ length: MAX_ADDITIONAL_VIDEOS }).map((_, i) => (
+                <VideoDropzone
+                  key={i}
+                  label={`Video adicional ${i + 1}`}
+                  hint={i === 0 ? 'Agrega perspectivas de dron, ángulos específicos o zonas de detalle' : undefined}
+                  file={additionalFiles[i]}
+                  onFile={(f) => handleAdditionalFile(i, f)}
+                  disabled={uploadingAny || (i > 0 && !additionalFiles[i - 1])}
+                />
+              ))}
             </div>
+          )}
 
-            {/* Warning para videos 2-4GB */}
-            {warning?.warning && (
-              <div className="mt-3 bg-amber-950/40 border border-amber-700 rounded-lg p-4">
-                <p className="text-amber-400 font-medium text-sm">⚠️ Video grande detectado</p>
-                <p className="text-amber-200/70 text-sm mt-1">
-                  Este video tardará aproximadamente{' '}
-                  <strong>{warning.estimatedMinutes} minutos</strong> en procesar y costará{' '}
-                  <strong>${warning.estimatedCostUSD} USD</strong> en GPU.
-                </p>
-                <p className="text-amber-200/50 text-xs mt-2">
-                  Para procesar más rápido, graba solo las áreas principales (máx 5 minutos).
-                </p>
-              </div>
-            )}
-
-            {/* Bloqueado >4GB */}
-            {warning?.blocked && (
-              <div className="mt-3 bg-red-950/40 border border-red-700 rounded-lg p-4">
-                <p className="text-red-400 font-medium text-sm">Video demasiado grande</p>
-                <p className="text-red-200/70 text-sm mt-1">
-                  Graba videos de máximo 20 minutos para mejores resultados.
-                </p>
-              </div>
-            )}
-          </div>
+          {/* Barras de progreso */}
+          {uploadingAny && (
+            <div className="space-y-3 bg-gray-900 border border-gray-800 rounded-xl p-4">
+              <UploadBar label="Video principal" progress={mainUpload.progress} error={mainUpload.error} />
+              {additionalFiles.map((f, i) => f && (
+                <UploadBar key={i} label={`Adicional ${i + 1}`} progress={additionalUploads[i].progress} error={additionalUploads[i].error} />
+              ))}
+            </div>
+          )}
 
           {error && (
             <p className="text-red-400 text-sm bg-red-950/30 rounded-lg px-4 py-3">{error}</p>
           )}
 
-          {uploading && (
-            <div>
-              <div className="flex justify-between text-sm text-gray-400 mb-2">
-                <span>Subiendo video...</span>
-                <span>{progress}%</span>
-              </div>
-              <div className="w-full bg-gray-800 rounded-full h-2">
-                <div
-                  className="bg-violet-500 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-            </div>
-          )}
-
           <button
             type="submit"
-            disabled={!file || !name || !clientName || uploading || warning?.blocked}
+            disabled={!mainFile || !name || !clientName || uploadingAny || submitting || mainWarning?.blocked}
             className="w-full bg-violet-600 hover:bg-violet-500 disabled:bg-gray-800 disabled:text-gray-600 text-white py-3 rounded-lg font-medium transition-colors"
           >
-            {uploading ? 'Subiendo...' : warning?.warning ? 'Confirmar y procesar' : 'Procesar tour 3D'}
+            {uploadingAny || submitting
+              ? activeAdditionals > 0 ? `Subiendo ${1 + activeAdditionals} videos...` : 'Subiendo video...'
+              : mainWarning?.warning ? 'Confirmar y procesar' : 'Procesar tour 3D'}
           </button>
         </form>
       </div>

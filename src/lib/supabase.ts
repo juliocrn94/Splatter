@@ -22,6 +22,7 @@ export interface Project {
   status: ProjectStatus
   error_message: string | null
   video_r2_key: string | null
+  video_r2_keys: string[] | null   // array para multi-video (2B)
   ply_r2_key: string | null
   spz_r2_key: string | null
   runpod_job_id: string | null

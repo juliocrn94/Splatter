@@ -4,6 +4,20 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase, Project } from '@/lib/supabase'
 
+// Carga el promedio de duración de los últimos 5 proyectos estándar
+async function fetchEstimatedMinutes(): Promise<number | null> {
+  const { data } = await supabase
+    .from('processing_metrics' as string)
+    .select('processing_duration_s')
+    .eq('quality', 'standard')
+    .not('processing_duration_s', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(5) as { data: { processing_duration_s: number }[] | null }
+  if (!data || data.length === 0) return null
+  const avg = data.reduce((sum, r) => sum + r.processing_duration_s, 0) / data.length
+  return Math.round(avg / 60)
+}
+
 const STAGES = [
   { key: 'uploading',   label: 'Subiendo video',      estMin: 2  },
   { key: 'processing',  label: 'Procesando tour 3D',  estMin: 22 },
@@ -39,9 +53,10 @@ function useElapsed(startedAt: string | null): number {
   return elapsed
 }
 
-function ProcessingProgress({ startedAt }: { startedAt: string | null }) {
+function ProcessingProgress({ startedAt, estimatedMin }: { startedAt: string | null; estimatedMin: number | null }) {
   const elapsed = useElapsed(startedAt)
-  const totalSec = PROCESSING_STEPS.reduce((a, s) => a + s.duration, 0)
+  const staticTotal = PROCESSING_STEPS.reduce((a, s) => a + s.duration, 0)
+  const totalSec = estimatedMin ? estimatedMin * 60 : staticTotal
   const remaining = Math.max(0, totalSec - elapsed)
 
   // Calcular en qué step estamos
@@ -119,6 +134,11 @@ export default function ProyectoPage() {
   const router = useRouter()
   const [project, setProject] = useState<Project | null>(null)
   const [codeCopied, setCodeCopied] = useState(false)
+  const [estimatedMin, setEstimatedMin] = useState<number | null>(null)
+
+  useEffect(() => {
+    fetchEstimatedMinutes().then(setEstimatedMin)
+  }, [])
 
   useEffect(() => {
     supabase
@@ -204,8 +224,12 @@ export default function ProyectoPage() {
                   <span className={pending ? 'text-gray-600' : current ? 'text-white font-medium' : 'text-gray-400'}>
                     {stage.label}
                   </span>
-                  {current && stage.estMin > 0 && (
-                    <span className="ml-2 text-xs text-gray-600">~{stage.estMin} min</span>
+                  {current && stage.key === 'processing' && (
+                    <span className="ml-2 text-xs text-gray-600">
+                      {estimatedMin
+                        ? `~${estimatedMin} min (basado en proyectos anteriores)`
+                        : `~${stage.estMin} min`}
+                    </span>
                   )}
                 </div>
               </div>
@@ -216,7 +240,7 @@ export default function ProyectoPage() {
         {/* Progreso detallado cuando está procesando */}
         {project.status === 'processing' && (
           <>
-            <ProcessingProgress startedAt={project.processing_started_at} />
+            <ProcessingProgress startedAt={project.processing_started_at} estimatedMin={estimatedMin} />
             <div className="mt-4 bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-sm">
               <p className="text-gray-400">✓ Puedes cerrar esta página. El procesamiento continúa en segundo plano.</p>
               <div className="flex gap-3 mt-3">
