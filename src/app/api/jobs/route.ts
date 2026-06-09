@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   const { data: project, error: fetchErr } = await db
     .from('projects')
-    .select('id, status, video_r2_key, project_code')
+    .select('id, status, video_r2_key, project_code, ply_r2_key')
     .eq('id', projectId)
     .single()
 
@@ -87,9 +87,10 @@ export async function POST(req: NextRequest) {
 
   const { id: runpodJobId } = await runpodRes.json()
 
-  const isReprocess = project.status === "reviewing"
+  const hasPriorResult = !!project.ply_r2_key
+  const isReprocess = project.status === "reviewing" || (hasPriorResult && project.status === "failed")
   const newStatus = isReprocess ? "reprocessing" : "processing"
-  const codeUpdate = isReprocess && project.project_code
+  const codeUpdate = hasPriorResult && project.project_code
     ? { project_code: nextProjectCodeVersion(project.project_code) }
     : {}
 
