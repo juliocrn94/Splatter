@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (fetchErr || !project) {
+    console.error('[/api/jobs] Proyecto no encontrado:', { projectId, error: fetchErr?.message })
     return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
   }
 
@@ -71,6 +72,12 @@ export async function POST(req: NextRequest) {
   )
 
   if (!runpodRes.ok) {
+    const runpodError = await runpodRes.text().catch(() => 'sin respuesta')
+    console.error('[/api/jobs] RunPod rechazó el job:', {
+      projectId, quality, status: runpodRes.status,
+      endpointId: process.env.RUNPOD_ENDPOINT_ID,
+      response: runpodError,
+    })
     return NextResponse.json({ error: 'No se pudo iniciar el procesamiento' }, { status: 502 })
   }
 

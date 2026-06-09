@@ -35,6 +35,10 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error || !project) {
+    console.error('[/api/projects] Error al insertar proyecto:', {
+      name, clientName, city, projectCode, slug,
+      error: error?.message, code: error?.code, details: error?.details,
+    })
     return NextResponse.json({ error: 'No se pudo crear el proyecto' }, { status: 500 })
   }
 

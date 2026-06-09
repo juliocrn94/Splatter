@@ -19,11 +19,14 @@ export async function POST(req: NextRequest) {
   // Validar que el webhook viene de RunPod
   const secret = req.headers.get('x-runpod-secret')
   if (secret !== process.env.RUNPOD_WEBHOOK_SECRET) {
+    console.warn('[/api/webhook] Webhook con secret inválido — posible intento externo')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const body = await req.json()
   const { id: runpodJobId, status, output, error } = body
+
+  console.log('[/api/webhook] Recibido:', { runpodJobId, status, hasOutput: !!output, error })
 
   if (!runpodJobId) {
     return NextResponse.json({ error: 'runpodJobId requerido' }, { status: 400 })
@@ -50,11 +53,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (status === 'COMPLETED') {
-    // Las claves de salida ya fueron guardadas al despachar el job — solo actualizar status
+    console.log('[/api/webhook] Job completado — marcando proyecto como reviewing:', project.id)
     await db.from('projects').update({
       status: 'reviewing',
     }).eq('id', project.id)
   } else {
+    console.error('[/api/webhook] Job fallido:', { projectId: project.id, error, runpodJobId })
     await db.from('projects').update({
       status:        'failed',
       error_message: getErrorMessage(error?.code),
