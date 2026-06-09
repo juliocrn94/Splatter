@@ -47,15 +47,17 @@ export default function NuevoPage() {
         .replace(/^-|-$/g, '')
         + '-' + Date.now().toString(36)
 
-      const { data: project, error: dbErr } = await supabase
-        .from('projects')
-        .insert({ name, client_name: clientName, slug, status: 'uploading' })
-        .select()
-        .single()
+      // 1. Crear proyecto via API (genera project_code incremental server-side)
+      const createRes = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, clientName }),
+      })
+      if (!createRes.ok) throw new Error('No se pudo crear el proyecto')
+      const { project } = await createRes.json()
+      if (!project) throw new Error('No se pudo crear el proyecto')
 
-      if (dbErr || !project) throw new Error('No se pudo crear el proyecto')
-
-      // 2. Obtener presigned URL para upload directo a R2
+      // 2. Eliminar slug local (ya viene del server), obtener presigned URL
       const presignRes = await fetch('/api/presign', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

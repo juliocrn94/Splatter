@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { supabaseAdmin, nextProjectCodeVersion } from "@/lib/supabase"
 import { getPresignedUploadUrl } from '@/lib/r2'
 
 const DISPATCHABLE_STATUSES = ['uploading', 'reviewing', 'failed']
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   const { data: project, error: fetchErr } = await db
     .from('projects')
-    .select('id, status, video_r2_key')
+    .select('id, status, video_r2_key, project_code')
     .eq('id', projectId)
     .single()
 
@@ -76,7 +76,11 @@ export async function POST(req: NextRequest) {
 
   const { id: runpodJobId } = await runpodRes.json()
 
-  const newStatus = project.status === 'reviewing' ? 'reprocessing' : 'processing'
+  const isReprocess = project.status === "reviewing"
+  const newStatus = isReprocess ? "reprocessing" : "processing"
+  const codeUpdate = isReprocess && project.project_code
+    ? { project_code: nextProjectCodeVersion(project.project_code) }
+    : {}
 
   await db.from('projects').update({
     status:                newStatus,
@@ -86,6 +90,7 @@ export async function POST(req: NextRequest) {
     ply_r2_key:            plyKey,
     spz_r2_key:            spzKey,
     processing_started_at: new Date().toISOString(),
+    ...codeUpdate,
   }).eq('id', projectId)
 
   return NextResponse.json({ jobId: runpodJobId })

@@ -84,7 +84,7 @@ export default function HomePage() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="font-semibold">{p.name}</p>
+                    <div className="flex items-center gap-2"><p className="font-semibold">{p.name}</p>{p.project_code && <span className="text-xs font-mono bg-gray-800 text-violet-300 px-2 py-0.5 rounded">{p.project_code}</span>}</div>
                     <p className="text-sm text-gray-400 mt-0.5">{p.client_name}</p>
                   </div>
                   <div className="text-right">

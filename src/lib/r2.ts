@@ -1,27 +1,30 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
-function requireEnv(key: string): string {
-  const val = process.env[key]
-  if (!val) throw new Error(`Variable de entorno requerida no encontrada: ${key}`)
-  return val
+// Cliente R2 lazy — solo se instancia en server (API routes), nunca en browser
+let _r2: S3Client | null = null
+function getR2(): S3Client {
+  if (!_r2) {
+    _r2 = new S3Client({
+      region: 'auto',
+      endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      credentials: {
+        accessKeyId:     process.env.R2_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+      },
+    })
+  }
+  return _r2
 }
 
-export const r2 = new S3Client({
-  region: 'auto',
-  endpoint: `https://${requireEnv('R2_ACCOUNT_ID')}.r2.cloudflarestorage.com`,
-  credentials: {
-    accessKeyId:     requireEnv('R2_ACCESS_KEY_ID'),
-    secretAccessKey: requireEnv('R2_SECRET_ACCESS_KEY'),
-  },
-})
+function getBucket(): string {
+  return process.env.R2_BUCKET_NAME!
+}
 
-export const BUCKET = requireEnv('R2_BUCKET_NAME')
-
-// Límites de upload en bytes
+// Límites de upload en bytes — seguros para importar en browser (no usan env vars server-only)
 export const UPLOAD_LIMITS = {
-  SOFT:  2 * 1024 * 1024 * 1024, // 2GB — muestra warning con estimación
-  HARD:  4 * 1024 * 1024 * 1024, // 4GB — bloqueado
+  SOFT:  2 * 1024 * 1024 * 1024,
+  HARD:  4 * 1024 * 1024 * 1024,
 }
 
 export function getUploadWarning(bytes: number): {
@@ -38,22 +41,19 @@ export function getUploadWarning(bytes: number): {
     return {
       blocked: false,
       warning: true,
-      estimatedMinutes: Math.round(gb * 22), // ~22 min por GB
+      estimatedMinutes: Math.round(gb * 22),
       estimatedCostUSD: parseFloat((gb * 0.13).toFixed(2)),
     }
   }
   return { blocked: false, warning: false, estimatedMinutes: 0, estimatedCostUSD: 0 }
 }
 
+// Solo llamar desde API routes (server-side)
 export async function getPresignedUploadUrl(key: string, contentType: string) {
   return getSignedUrl(
-    r2,
-    new PutObjectCommand({
-      Bucket:      BUCKET,
-      Key:         key,
-      ContentType: contentType,
-    }),
-    { expiresIn: 3600 } // 1 hora para completar el upload
+    getR2(),
+    new PutObjectCommand({ Bucket: getBucket(), Key: key, ContentType: contentType }),
+    { expiresIn: 3600 }
   )
 }
 

@@ -16,6 +16,8 @@ export interface Project {
   name: string
   client_name: string
   slug: string
+  project_code: string       // SPL-CDMX-00001-A
+  city: string               // CDMX, GDL, MTY...
   status: ProjectStatus
   error_message: string | null
   video_r2_key: string | null
@@ -26,6 +28,32 @@ export interface Project {
   processing_started_at: string | null
   delivered_at: string | null
   notes: string | null
+}
+
+// Genera el código incremental: SPL-CDMX-00001-A
+// Llama SOLO desde server (API routes) — usa supabaseAdmin
+export async function generateProjectCode(city: string = 'CDMX'): Promise<string> {
+  const { count } = await createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+    .from('projects')
+    .select('*', { count: 'exact', head: true })
+
+  const num = String((count ?? 0) + 1).padStart(5, '0')
+  return `SPL-${city}-${num}-A`
+}
+
+// Incrementa la letra de versión: SPL-CDMX-00001-A → SPL-CDMX-00001-B
+export function nextProjectCodeVersion(code: string): string {
+  const parts = code.split('-')
+  if (parts.length < 4) return code
+  const currentLetter = parts[parts.length - 1]
+  const nextLetter = currentLetter >= 'Z'
+    ? 'Z'
+    : String.fromCharCode(currentLetter.charCodeAt(0) + 1)
+  return [...parts.slice(0, -1), nextLetter].join('-')
 }
 
 export const STATUS_LABELS: Record<ProjectStatus, string> = {

@@ -66,3 +66,8 @@ SELECT cron.schedule(
   '*/15 * * * *',               -- cada 15 minutos
   'SELECT watchdog_stuck_jobs()'
 );
+
+-- Migración: agregar project_code y city si no existen
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_code TEXT UNIQUE;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS city TEXT NOT NULL DEFAULT 'CDMX';
+CREATE INDEX IF NOT EXISTS projects_project_code_idx ON projects (project_code);
