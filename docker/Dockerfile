@@ -36,7 +36,7 @@ RUN wget -v \
 # OpenSplat — compilar
 RUN cd /tmp/opensplat && mkdir build && cd build && \
     cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
-        -DTORCH_DIR=/opt/libtorch/share/cmake/Torch && \
+        -DCMAKE_PREFIX_PATH=/opt/libtorch && \
     ninja opensplat && \
     cp opensplat /usr/local/bin/ && \
     rm -rf /tmp/opensplat /tmp/opensplat.tar.gz && \
