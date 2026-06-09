@@ -28,6 +28,8 @@ export interface Project {
   processing_started_at: string | null
   delivered_at: string | null
   notes: string | null
+  contact_phone: string | null
+  is_locked: boolean
 }
 
 // Genera el código incremental: SPL-CDMX-00001-A
