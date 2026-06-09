@@ -49,11 +49,12 @@ export function getUploadWarning(bytes: number): {
 }
 
 // Solo llamar desde API routes (server-side)
+// TTL de 6 horas: el job de RunPod toma 20-40 min, necesitamos margen amplio
 export async function getPresignedUploadUrl(key: string, contentType: string) {
   return getSignedUrl(
     getR2(),
     new PutObjectCommand({ Bucket: getBucket(), Key: key, ContentType: contentType }),
-    { expiresIn: 600 }
+    { expiresIn: 21600 }
   )
 }
 
