@@ -27,7 +27,8 @@ RUN git clone --depth=1 https://github.com/nianticlabs/spz.git /tmp/spz && \
     cd /tmp/spz && \
     cmake -B build -DSPZ_BUILD_TOOLS=ON -DCMAKE_BUILD_TYPE=Release . && \
     cmake --build build --parallel && \
-    cp build/cli_tools/ply_to_spz /usr/local/bin/ply_to_spz && \
+    find /tmp/spz/build -name "ply_to_spz" -type f -exec cp {} /usr/local/bin/ply_to_spz \; && \
+    chmod +x /usr/local/bin/ply_to_spz && \
     rm -rf /tmp/spz && \
     echo "ply_to_spz OK"
 
