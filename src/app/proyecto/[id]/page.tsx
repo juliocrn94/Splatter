@@ -57,6 +57,22 @@ function ProcessingProgress({ startedAt, estimatedMin }: { startedAt: string | n
   const elapsed = useElapsed(startedAt)
   const staticTotal = PROCESSING_STEPS.reduce((a, s) => a + s.duration, 0)
   const totalSec = estimatedMin ? estimatedMin * 60 : staticTotal
+
+  // Durante los primeros 90s mostrar warm-up para que un retry no se vea como "regresó a 0"
+  if (elapsed < 90) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4">
+        <div className="flex justify-between text-sm">
+          <span className="text-violet-300 font-medium animate-pulse">Iniciando instancia GPU...</span>
+          <span className="text-gray-500">{elapsed}s</span>
+        </div>
+        <div className="w-full bg-gray-800 rounded-full h-2.5">
+          <div className="bg-violet-500/40 h-2.5 rounded-full animate-pulse" style={{ width: '8%' }} />
+        </div>
+        <p className="text-xs text-gray-600">El procesamiento comenzará en unos momentos</p>
+      </div>
+    )
+  }
   const remaining = Math.max(0, totalSec - elapsed)
 
   // Calcular en qué step estamos
@@ -250,7 +266,7 @@ export default function ProyectoPage() {
         {/* Progreso detallado cuando está procesando */}
         {project.status === 'processing' && (
           <>
-            <ProcessingProgress startedAt={project.processing_started_at} estimatedMin={estimatedMin} />
+            <ProcessingProgress startedAt={project.processing_started_at} estimatedMin={estimatedMin} key={project.processing_started_at ?? 'processing'} />
             <div className="mt-4 bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-sm">
               <p className="text-gray-400">✓ Puedes cerrar esta página. El procesamiento continúa en segundo plano.</p>
               <div className="flex gap-3 mt-3">

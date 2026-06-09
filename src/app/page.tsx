@@ -4,6 +4,57 @@ import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import { supabase, Project, STATUS_LABELS, STATUS_COLORS } from '@/lib/supabase'
 
+const PROCESSING_STEPS = [
+  { label: 'Iniciando GPU',      pct: 10, duration: 180 },
+  { label: 'Extrayendo frames',  pct: 25, duration: 120 },
+  { label: 'COLMAP',             pct: 55, duration: 360 },
+  { label: 'OpenSplat',          pct: 85, duration: 600 },
+  { label: 'Guardando archivos', pct: 95, duration: 120 },
+]
+const TOTAL_SECS = PROCESSING_STEPS.reduce((a, s) => a + s.duration, 0)
+
+function MiniProgress({ startedAt }: { startedAt: string | null }) {
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!startedAt) return
+    const start = new Date(startedAt).getTime()
+    const tick = () => setElapsed(Math.floor((Date.now() - start) / 1000))
+    tick()
+    const t = setInterval(tick, 5000)
+    return () => clearInterval(t)
+  }, [startedAt])
+
+  let cumulative = 0, currentStep = 0
+  for (let i = 0; i < PROCESSING_STEPS.length; i++) {
+    if (elapsed >= cumulative + PROCESSING_STEPS[i].duration) {
+      cumulative += PROCESSING_STEPS[i].duration
+      currentStep = i + 1
+    } else break
+  }
+  currentStep = Math.min(currentStep, PROCESSING_STEPS.length - 1)
+  const stepElapsed = elapsed - cumulative
+  const stepDur = PROCESSING_STEPS[currentStep]?.duration ?? 1
+  const pctStart = currentStep === 0 ? 0 : PROCESSING_STEPS[currentStep - 1].pct
+  const pctEnd   = PROCESSING_STEPS[currentStep]?.pct ?? 100
+  const pct = Math.min(Math.round(pctStart + (pctEnd - pctStart) * Math.min(stepElapsed / stepDur, 1)), 99)
+  const label = PROCESSING_STEPS[currentStep]?.label ?? 'Procesando...'
+  const mins = Math.floor(elapsed / 60)
+  const secs = elapsed % 60
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      <div className="flex justify-between text-xs text-gray-500">
+        <span>{label}</span>
+        <span>{pct}% · {mins}m {secs}s</span>
+      </div>
+      <div className="w-full bg-gray-800 rounded-full h-1">
+        <div className="bg-violet-500 h-1 rounded-full transition-all duration-5000" style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
 export default function HomePage() {
   const [projects, setProjects]   = useState<Project[]>([])
   const [loading, setLoading]     = useState(true)
@@ -179,6 +230,9 @@ export default function HomePage() {
                       </p>
                     </div>
                   </div>
+                  {(p.status === 'processing' || p.status === 'reprocessing') && (
+                    <MiniProgress startedAt={p.processing_started_at} />
+                  )}
                   {p.status === 'failed' && p.error_message && (
                     <p className="mt-3 text-sm text-red-400 bg-red-950/30 rounded-lg px-3 py-2">
                       {p.error_message}
