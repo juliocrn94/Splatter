@@ -53,7 +53,7 @@ export async function getPresignedUploadUrl(key: string, contentType: string) {
   return getSignedUrl(
     getR2(),
     new PutObjectCommand({ Bucket: getBucket(), Key: key, ContentType: contentType }),
-    { expiresIn: 3600 }
+    { expiresIn: 600 }
   )
 }
 

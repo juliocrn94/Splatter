@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { requireAuth } from '@/lib/auth'
 
 // PATCH /api/projects/[id] — editar nombre y/o cliente
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = requireAuth(req)
+  if (authError) return authError
+
   const { id } = await params
   const { name, clientName } = await req.json()
 
@@ -35,11 +39,31 @@ export async function PATCH(
 
 // DELETE /api/projects/[id] — eliminar proyecto
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = requireAuth(req)
+  if (authError) return authError
+
   const { id } = await params
   const db = supabaseAdmin()
+
+  const { data: project, error: fetchErr } = await db
+    .from('projects')
+    .select('id, status')
+    .eq('id', id)
+    .single()
+
+  if (fetchErr || !project) {
+    return NextResponse.json({ error: 'Proyecto no encontrado' }, { status: 404 })
+  }
+
+  if (project.status === 'processing' || project.status === 'reprocessing') {
+    return NextResponse.json(
+      { error: `No se puede eliminar un proyecto en estado "${project.status}"` },
+      { status: 409 }
+    )
+  }
 
   const { error } = await db.from('projects').delete().eq('id', id)
 

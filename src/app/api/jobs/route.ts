@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin, nextProjectCodeVersion } from "@/lib/supabase"
 import { getPresignedUploadUrl } from '@/lib/r2'
+import { requireAuth } from '@/lib/auth'
 
 const DISPATCHABLE_STATUSES = ['uploading', 'reviewing', 'failed']
 
 export async function POST(req: NextRequest) {
+  const authError = requireAuth(req)
+  if (authError) return authError
+
   const { projectId, videoKey, quality: rawQuality = 'standard' } = await req.json()
 
   if (!projectId || !videoKey) {

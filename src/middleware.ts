@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { isValidSession } from '@/lib/sessions'
 
 // Rutas públicas — no requieren autenticación
 const PUBLIC_PREFIXES = ['/tour/', '/login']
@@ -18,7 +19,7 @@ export function middleware(req: NextRequest) {
 
   // La cookie operator_token almacena la contraseña del operador (httpOnly + secure + sameSite=strict)
   const token = req.cookies.get('operator_token')?.value
-  if (token && token === process.env.OPERATOR_PASSWORD) return NextResponse.next()
+  if (token && isValidSession(token)) return NextResponse.next()
 
   const loginUrl = new URL('/login', req.url)
   loginUrl.searchParams.set('next', pathname)

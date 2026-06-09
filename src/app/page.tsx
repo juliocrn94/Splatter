@@ -189,7 +189,7 @@ export default function HomePage() {
                 <div className="absolute right-4 top-4" ref={menuId === p.id ? menuRef : null}>
                   <button
                     onClick={(e) => { e.preventDefault(); setMenuId(menuId === p.id ? null : p.id) }}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 hover:text-white hover:bg-gray-700 transition-colors"
                   >
                     ⋯
                   </button>

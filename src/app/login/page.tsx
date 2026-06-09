@@ -7,7 +7,8 @@ import { Suspense } from 'react'
 function LoginForm() {
   const router       = useRouter()
   const params       = useSearchParams()
-  const next         = params.get('next') ?? '/'
+  const raw          = params.get('next') ?? '/'
+  const next         = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/'
   const [pw, setPw]  = useState('')
   const [error, setError]   = useState('')
   const [loading, setLoading] = useState(false)
