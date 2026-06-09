@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
   const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook/runpod`
 
   const runpodRes = await fetch(
-    `https://api.runpod.io/v2/${process.env.RUNPOD_ENDPOINT_ID}/run`,
+    `https://api.runpod.ai/v2/${process.env.RUNPOD_ENDPOINT_ID}/run`,
     {
       method: 'POST',
       headers: {
