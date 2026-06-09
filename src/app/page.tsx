@@ -209,6 +209,19 @@ export default function HomePage() {
                       >
                         👁 Ver proyecto
                       </Link>
+                      <button
+                        onClick={async (e) => { e.preventDefault(); e.stopPropagation()
+                          await fetch(`/api/projects/${p.id}`, {
+                            method: 'PATCH',
+                            headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({ isLocked: !p.is_locked })
+                          })
+                          setMenuId(null)
+                        }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:bg-gray-700 flex items-center gap-2"
+                      >
+                        {p.is_locked ? '🔓 Desbloquear tour' : '🔒 Bloquear tour'}
+                      </button>
                       {p.status === 'delivered' && (
                         <a
                           href={`/tour/${p.slug}`}

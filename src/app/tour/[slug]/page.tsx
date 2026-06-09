@@ -13,12 +13,23 @@ export default async function TourPage({ params }: { params: Promise<{ slug: str
 
   const { data: project } = await supabase
     .from('projects')
-    .select('name, client_name, spz_r2_key, delivered_at')
+    .select('name, client_name, spz_r2_key, delivered_at, contact_phone, is_locked')
     .eq('slug', slug)
     .eq('status', 'delivered')
     .single()
 
   if (!project?.spz_r2_key) notFound()
+
+  if (project.is_locked) {
+    return (
+      <div className="h-screen w-screen bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-white text-xl font-semibold">Este tour no está disponible</p>
+          <p className="text-gray-500 text-sm mt-2">El acceso ha sido desactivado temporalmente.</p>
+        </div>
+      </div>
+    )
+  }
 
   const spzUrl = `${process.env.R2_PUBLIC_URL}/${project.spz_r2_key}`
 
@@ -28,6 +39,7 @@ export default async function TourPage({ params }: { params: Promise<{ slug: str
         spzUrl={spzUrl}
         projectName={project.name}
         clientName={project.client_name}
+        contactPhone={project.contact_phone ?? undefined}
       />
     </div>
   )

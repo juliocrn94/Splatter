@@ -118,6 +118,7 @@ export default function ProyectoPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [project, setProject] = useState<Project | null>(null)
+  const [codeCopied, setCodeCopied] = useState(false)
 
   useEffect(() => {
     supabase
@@ -169,9 +170,17 @@ export default function ProyectoPage() {
           <h1 className="text-xl font-bold">{project.name}</h1>
           <p className="text-gray-400 text-sm mt-1">{project.client_name}</p>
           {project.project_code && (
-            <span className="inline-block mt-2 text-xs font-mono bg-gray-800 text-violet-300 px-2 py-1 rounded">
-              {project.project_code}
-            </span>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(project.project_code!)
+                setCodeCopied(true)
+                setTimeout(() => setCodeCopied(false), 2000)
+              }}
+              className="inline-block mt-2 text-xs font-mono bg-gray-800 text-violet-300 px-2 py-1 rounded hover:bg-gray-700 cursor-pointer"
+              title="Copiar código"
+            >
+              {codeCopied ? '¡Copiado!' : project.project_code}
+            </button>
           )}
         </div>
 
@@ -206,7 +215,16 @@ export default function ProyectoPage() {
 
         {/* Progreso detallado cuando está procesando */}
         {project.status === 'processing' && (
-          <ProcessingProgress startedAt={project.processing_started_at} />
+          <>
+            <ProcessingProgress startedAt={project.processing_started_at} />
+            <div className="mt-4 bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-sm">
+              <p className="text-gray-400">✓ Puedes cerrar esta página. El procesamiento continúa en segundo plano.</p>
+              <div className="flex gap-3 mt-3">
+                <a href="/" className="text-violet-400 hover:text-violet-300 text-sm">← Volver al dashboard</a>
+                <a href="/nuevo" className="text-violet-400 hover:text-violet-300 text-sm">+ Subir otro proyecto</a>
+              </div>
+            </div>
+          </>
         )}
 
         {/* Estado uploading */}

@@ -11,16 +11,18 @@ export async function PATCH(
   if (authError) return authError
 
   const { id } = await params
-  const { name, clientName } = await req.json()
+  const { name, clientName, isLocked, contactPhone } = await req.json()
 
-  if (!name && !clientName) {
+  if (!name && !clientName && typeof isLocked !== 'boolean' && !contactPhone) {
     return NextResponse.json({ error: 'Al menos un campo requerido' }, { status: 400 })
   }
 
   const db = supabaseAdmin()
-  const updates: Record<string, string> = {}
-  if (name)       updates.name        = name
-  if (clientName) updates.client_name = clientName
+  const updates: Record<string, string | boolean> = {}
+  if (name)                          updates.name          = name
+  if (clientName)                    updates.client_name   = clientName
+  if (typeof isLocked === 'boolean') updates.is_locked     = isLocked
+  if (contactPhone)                  updates.contact_phone = contactPhone
 
   const { data, error } = await db
     .from('projects')

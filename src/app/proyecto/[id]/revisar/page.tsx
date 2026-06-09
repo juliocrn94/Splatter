@@ -71,9 +71,20 @@ export default function RevisarPage() {
           <a href="/" className="text-gray-500 hover:text-gray-300 text-sm">← Proyectos</a>
           <h1 className="font-semibold mt-0.5">{project.name}</h1>
           <p className="text-gray-500 text-sm">{project.client_name}</p>
+          {project.project_code && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(project.project_code!)
+              }}
+              className="inline-block mt-1 text-xs font-mono bg-gray-800 text-violet-300 px-2 py-0.5 rounded hover:bg-gray-700 cursor-pointer"
+              title="Copiar código"
+            >
+              {project.project_code}
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="hidden md:flex items-center gap-3">
           <button
             onClick={() => setShowHqConfirm(true)}
             disabled={reprocessing}
@@ -104,6 +115,24 @@ export default function RevisarPage() {
             Archivo del tour no disponible
           </div>
         )}
+      </div>
+
+      {/* Sticky bottom bar — mobile only */}
+      <div className="fixed bottom-0 left-0 right-0 bg-gray-950/95 backdrop-blur border-t border-gray-800 px-4 py-3 flex gap-3 md:hidden z-40">
+        <button
+          onClick={() => setShowHqConfirm(true)}
+          disabled={reprocessing}
+          className="flex-1 text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 px-4 py-2.5 rounded-lg transition-colors"
+        >
+          Reprocesar
+        </button>
+        <button
+          onClick={handleDeliver}
+          disabled={delivering}
+          className="flex-1 bg-violet-600 hover:bg-violet-500 text-white px-4 py-2.5 rounded-lg font-medium text-sm transition-colors"
+        >
+          {delivering ? 'Generando...' : 'Aprobar y generar link'}
+        </button>
       </div>
 
       {/* Modal confirmación alta calidad */}

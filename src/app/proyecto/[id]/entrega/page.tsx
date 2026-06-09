@@ -8,6 +8,7 @@ export default function EntregaPage() {
   const { id } = useParams<{ id: string }>()
   const [project, setProject] = useState<Project | null>(null)
   const [copied, setCopied] = useState(false)
+  const [codeCopied, setCodeCopied] = useState(false)
 
   useEffect(() => {
     supabase.from('projects').select('*').eq('id', id).single().then(({ data }) => setProject(data))
@@ -36,6 +37,19 @@ export default function EntregaPage() {
           <div className="text-3xl mb-3">🎉</div>
           <h1 className="text-2xl font-bold">Tour listo</h1>
           <p className="text-gray-400 mt-1">{project.name} · {project.client_name}</p>
+          {project.project_code && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(project.project_code!)
+                setCodeCopied(true)
+                setTimeout(() => setCodeCopied(false), 2000)
+              }}
+              className="inline-block mt-2 text-xs font-mono bg-gray-800 text-violet-300 px-2 py-1 rounded hover:bg-gray-700 cursor-pointer"
+              title="Copiar código"
+            >
+              {codeCopied ? '¡Copiado!' : project.project_code}
+            </button>
+          )}
         </div>
 
         {/* Link */}
@@ -60,6 +74,14 @@ export default function EntregaPage() {
               Abrir tour →
             </a>
           </div>
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(`Aquí puedes ver el tour virtual de la propiedad: ${tourUrl}`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full bg-green-700 hover:bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium text-center transition-colors block mt-2"
+          >
+            📱 Compartir por WhatsApp
+          </a>
         </div>
 
         <p className="text-gray-600 text-xs text-center">

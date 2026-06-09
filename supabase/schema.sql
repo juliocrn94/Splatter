@@ -71,3 +71,7 @@ SELECT cron.schedule(
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS project_code TEXT UNIQUE;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS city TEXT NOT NULL DEFAULT 'CDMX';
 CREATE INDEX IF NOT EXISTS projects_project_code_idx ON projects (project_code);
+
+-- Design review additions
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS contact_phone TEXT;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT false;

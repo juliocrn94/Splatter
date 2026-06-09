@@ -35,16 +35,23 @@ function LoginForm() {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        <h1 className="text-white text-2xl font-bold mb-8 text-center">Splatter</h1>
+        <div className="text-center mb-8">
+          <div className="w-10 h-10 bg-violet-600 rounded-xl mx-auto mb-4 flex items-center justify-center text-white font-bold text-lg">S</div>
+          <h1 className="text-white text-2xl font-bold">Splatter</h1>
+          <p className="text-gray-500 text-sm mt-1 text-center">Tours 3D para desarrolladoras en México</p>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="password"
-            placeholder="Contraseña"
-            value={pw}
-            onChange={(e) => setPw(e.target.value)}
-            autoFocus
-            className="w-full bg-gray-900 border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-violet-500"
-          />
+          <div>
+            <label className="block text-sm text-gray-400 mb-2">Contraseña de acceso</label>
+            <input
+              type="password"
+              placeholder="Contraseña"
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              autoFocus
+              className="w-full bg-gray-900 border border-gray-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:border-violet-500"
+            />
+          </div>
           {error && <p className="text-red-400 text-sm">{error}</p>}
           <button
             type="submit"
