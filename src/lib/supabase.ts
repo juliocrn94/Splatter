@@ -35,18 +35,32 @@ export interface Project {
 }
 
 // Genera el código incremental: SPL-CDMX-00001-A
-// Llama SOLO desde server (API routes) — usa supabaseAdmin
+// Usa MAX del número existente para garantizar monotónico aunque haya gaps
+// (ej: proyectos eliminados, retries fallidos, etc.)
 export async function generateProjectCode(city: string = 'CDMX'): Promise<string> {
-  const { count } = await createClient(
+  const db = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   )
-    .from('projects')
-    .select('*', { count: 'exact', head: true })
 
-  const num = String((count ?? 0) + 1).padStart(5, '0')
-  return `SPL-${city}-${num}-A`
+  // Obtener el código más alto existente para esta ciudad (incluyendo eliminados)
+  const { data } = await db
+    .from('projects')
+    .select('project_code')
+    .like('project_code', `SPL-${city}-%`)
+    .order('project_code', { ascending: false })
+    .limit(1)
+
+  let nextNum = 1
+  if (data && data.length > 0 && data[0].project_code) {
+    // Parsear el número del código más alto: SPL-CDMX-00003-B → 3
+    const parts = data[0].project_code.split('-')
+    const parsed = parseInt(parts[2], 10)
+    if (!isNaN(parsed)) nextNum = parsed + 1
+  }
+
+  return `SPL-${city}-${String(nextNum).padStart(5, '0')}-A`
 }
 
 // Incrementa la letra de versión: SPL-CDMX-00001-A → SPL-CDMX-00001-B
