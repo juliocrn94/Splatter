@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getPresignedUploadUrl, getPresignedDownloadUrl } from '@/lib/r2'
+import { requireAuth } from '@/lib/auth'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authError = await requireAuth(req)
+  if (authError) return authError
+
   const { id } = await params
+
+  if (!UUID_RE.test(id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 })
+  }
+
   const db = supabaseAdmin()
 
   const { data: project, error } = await db

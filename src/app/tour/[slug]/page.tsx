@@ -31,7 +31,7 @@ export default async function TourPage({ params }: { params: Promise<{ slug: str
     )
   }
 
-  const spzUrl = `${process.env.R2_PUBLIC_URL}/${project.spz_r2_key}`
+  const spzUrl = `${process.env.NEXT_PUBLIC_R2_PUBLIC_URL}/${project.spz_r2_key}`
 
   return (
     <div className="h-screen w-screen bg-black overflow-hidden">

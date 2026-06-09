@@ -16,16 +16,20 @@ function getErrorMessage(code?: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  // Validar secret solo si RunPod LO ENVÍA y no coincide.
-  // Si RunPod no manda el header, aceptar y confiar en validación por runpod_job_id (abajo).
-  // Esto soporta endpoints de RunPod sin webhook secret configurado.
   const secret = req.headers.get('x-runpod-secret')
   const expectedSecret = process.env.RUNPOD_WEBHOOK_SECRET
-  if (secret && expectedSecret && secret !== expectedSecret) {
-    console.warn('[/api/webhook] Secret recibido pero incorrecto — rechazando')
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  if (expectedSecret) {
+    // Secret configurado: rechazar cualquier request que no lo traiga o no coincida
+    if (secret !== expectedSecret) {
+      console.warn('[/api/webhook] Secret inválido o ausente — rechazando')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+  } else {
+    // Sin secret: loguear advertencia pero seguir (no bloquear durante desarrollo)
+    console.warn('[/api/webhook] RUNPOD_WEBHOOK_SECRET no configurado — validando solo por job_id')
   }
-  console.log('[/api/webhook] Auth:', secret ? 'secret presente' : 'sin secret (validando por job_id)')
+  console.log('[/api/webhook] Auth:', secret ? 'secret OK' : 'sin secret')
 
   const body = await req.json()
   const { id: runpodJobId, status, output, error } = body
