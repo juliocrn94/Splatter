@@ -23,8 +23,10 @@ RUN pip install --no-cache-dir torch==2.1.2 torchvision==0.16.2 \
     --index-url https://download.pytorch.org/whl/cu121
 
 # 2) gsplat por WHEEL PRECOMPILADO (sin compilar la extensión CUDA en cold start)
+# --extra-index-url (no --index-url): mantiene PyPI como fuente de deps transitivas
+# (rich, etc.). --index-url las bloqueaba y rompía el install.
 RUN pip install --no-cache-dir gsplat==1.5.3+pt21cu121 \
-    --index-url https://docs.gsplat.studio/whl/pt21cu121
+    --extra-index-url https://docs.gsplat.studio/whl/pt21cu121
 
 # 3) deps de simple_trainer 'default' + worker (runpod, requests para handler)
 RUN pip install --no-cache-dir \
