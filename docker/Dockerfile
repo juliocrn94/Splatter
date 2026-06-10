@@ -1,32 +1,46 @@
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
+# ─── Worker de VALIDACIÓN gsplat (rama gsplat-validation) ─────────────────────
+# Reemplaza OpenSplat por gsplat (Nerfstudio) con rasterización antialiased
+# (mip-splatting). NO tocar producción (main usa OpenSplat).
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+# RTX 4090 = Ada = compute capability 8.9 (para compilar fused-ssim)
+ENV TORCH_CUDA_ARCH_LIST="8.9"
+ENV PYTHONUNBUFFERED=1
 
-# Sistema base + COLMAP + dependencias de ply_to_spz
-RUN apt-get update && apt-get install -y \
-    colmap \
-    ffmpeg \
-    cmake ninja-build wget unzip git \
-    g++ \
+# Sistema: COLMAP + ffmpeg + Python 3.10 + build tools (ply_to_spz, fused-ssim)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    colmap ffmpeg \
+    python3.10 python3-pip \
+    git cmake ninja-build g++ wget \
     zlib1g-dev libzstd-dev \
-    python3 python3-pip \
-    libopencv-dev \
-    libboost-program-options-dev libboost-filesystem-dev \
+    libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python
 
-# Vocab tree para COLMAP vocab_tree_matcher (~38MB — verificar que no sea HTML de error)
-RUN wget -q "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin" \
-    -O /opt/vocab_tree.bin && \
-    test $(stat -c%s /opt/vocab_tree.bin) -gt 10000000 || \
-    (echo "ERROR: vocab_tree descargado incompleto o inválido" && exit 1)
+# 1) torch 2.1.2 + cu121 PRIMERO (ABI que esperan los wheels de gsplat)
+RUN pip install --no-cache-dir torch==2.1.2 torchvision==0.16.2 \
+    --index-url https://download.pytorch.org/whl/cu121
 
-# Python packages
-RUN pip3 install --no-cache-dir runpod boto3 pillow numpy requests
+# 2) gsplat por WHEEL PRECOMPILADO (sin compilar la extensión CUDA en cold start)
+RUN pip install --no-cache-dir gsplat==1.5.3+pt21cu121 \
+    --index-url https://docs.gsplat.studio/whl/pt21cu121
 
-# ply_to_spz — convierte .ply → .spz (nianticlabs/spz, C++ con CMake)
-# IMPORTANTE: reemplazamos el ply_to_spz.cpp del repo por el nuestro, que fuerza
-# formato spz versión 2 (gzip). El HEAD del repo genera v4 (ZSTD) que los viewers
-# web como Spark NO leen (solo soportan v1-3 gzip).
+# 3) deps de simple_trainer 'default' + worker (runpod, requests para handler)
+RUN pip install --no-cache-dir \
+    "numpy<2.0.0" scipy scikit-learn opencv-python-headless "imageio[ffmpeg]" \
+    "tyro>=0.8.8" tqdm Pillow "torchmetrics[image]" tensorboard \
+    runpod requests boto3 \
+    "git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e"
+
+# 4) fused-ssim — simple_trainer 'default' lo usa para la loss SSIM. Compila en build
+#    (necesita nvcc del devel image + TORCH_CUDA_ARCH_LIST). Build, no cold start.
+RUN pip install --no-cache-dir "git+https://github.com/rahul-goel/fused-ssim@main"
+
+# 5) código de gsplat (simple_trainer.py + datasets/colmap.py)
+RUN git clone --depth 1 https://github.com/nerfstudio-project/gsplat /opt/gsplat
+
+# 6) ply_to_spz v2 (gzip, compatible con Spark) — mismo converter que producción
 COPY docker/ply_to_spz_v2.cpp /tmp/ply_to_spz_v2.cpp
 RUN git clone --depth=1 https://github.com/nianticlabs/spz.git /tmp/spz && \
     cp /tmp/ply_to_spz_v2.cpp /tmp/spz/cli_tools/src/ply_to_spz.cpp && \
@@ -34,33 +48,9 @@ RUN git clone --depth=1 https://github.com/nianticlabs/spz.git /tmp/spz && \
     cmake -B build -DSPZ_BUILD_TOOLS=ON -DCMAKE_BUILD_TYPE=Release . && \
     cmake --build build --parallel 2 && \
     find /tmp/spz/build -name "ply_to_spz" -type f -exec cp {} /usr/local/bin/ply_to_spz \; && \
-    test -f /usr/local/bin/ply_to_spz || (echo "ERROR: ply_to_spz no encontrado tras el build" && exit 1) && \
-    chmod +x /usr/local/bin/ply_to_spz && \
+    test -f /usr/local/bin/ply_to_spz && chmod +x /usr/local/bin/ply_to_spz && \
     rm -rf /tmp/spz /tmp/ply_to_spz_v2.cpp && \
-    echo "ply_to_spz OK (v2 forzado)"
-
-# LibTorch
-RUN wget -v \
-    "https://download.pytorch.org/libtorch/cu121/libtorch-cxx11-abi-shared-with-deps-2.1.2%2Bcu121.zip" \
-    -O /tmp/libtorch.zip
-RUN unzip -q /tmp/libtorch.zip -d /opt && rm /tmp/libtorch.zip && \
-    echo "LibTorch OK: $(ls /opt/libtorch/share/cmake/Torch)"
-
-# OpenSplat — descargar y compilar
-RUN wget -v \
-    "https://github.com/pierotofy/OpenSplat/archive/refs/tags/v1.1.4.tar.gz" \
-    -O /tmp/opensplat.tar.gz && \
-    tar xzf /tmp/opensplat.tar.gz -C /tmp && \
-    mv /tmp/OpenSplat-1.1.4 /tmp/opensplat && \
-    echo "OpenSplat src OK"
-
-RUN cd /tmp/opensplat && mkdir build && cd build && \
-    cmake .. -GNinja -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_PREFIX_PATH=/opt/libtorch && \
-    ninja opensplat && \
-    cp opensplat /usr/local/bin/ && \
-    rm -rf /tmp/opensplat /tmp/opensplat.tar.gz && \
-    echo "OpenSplat binary OK"
+    echo "ply_to_spz OK (v2)"
 
 # Archivos del pipeline
 COPY docker/process_splat.sh /opt/process_splat.sh
