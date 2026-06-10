@@ -141,7 +141,7 @@ export default function SplatViewer({ url, className }: Props) {
       const dir    = new THREE.Vector3()
       const right  = new THREE.Vector3()
       const up     = new THREE.Vector3(0, 1, 0)
-      const SPEED  = 0.05
+      const SPEED  = 0.02
 
       const animate = () => {
         raf = requestAnimationFrame(animate)
