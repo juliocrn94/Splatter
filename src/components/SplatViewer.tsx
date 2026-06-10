@@ -5,13 +5,15 @@ import { useEffect, useRef, useState } from 'react'
 interface Props {
   url: string
   className?: string
+  debug?: boolean
 }
 
 // Viewer de Gaussian Splatting basado en Spark (@sparkjsdev/spark) sobre Three.js.
 // Spark soporta .spz nativo (formato v1-3 gzip) — lo que genera nuestro pipeline.
-export default function SplatViewer({ url, className }: Props) {
+export default function SplatViewer({ url, className, debug }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
+  const [diag, setDiag] = useState<string>('')
 
   useEffect(() => {
     const container = containerRef.current
@@ -85,6 +87,7 @@ export default function SplatViewer({ url, className }: Props) {
         console.log('[SplatViewer] bbox size:', size.toArray(), 'center:', center.toArray())
 
         const maxDim = Math.max(size.x, size.y, size.z)
+        const numSplats = (mesh as unknown as { getNumSplats?: () => number }).getNumSplats?.() ?? -1
         if (box && !box.isEmpty() && isFinite(maxDim) && maxDim > 0) {
           const dist = maxDim * 1.5
           orbit.target.copy(center)
@@ -94,6 +97,12 @@ export default function SplatViewer({ url, className }: Props) {
           camera.updateProjectionMatrix()
           orbit.update()
         }
+        const wh = `${container.clientWidth}x${container.clientHeight}`
+        setDiag(
+          `splats: ${numSplats.toLocaleString()} | bbox: ${size.x.toFixed(1)},${size.y.toFixed(1)},${size.z.toFixed(1)} | ` +
+          `center: ${center.x.toFixed(1)},${center.y.toFixed(1)},${center.z.toFixed(1)} | ` +
+          `cam: ${camera.position.x.toFixed(1)},${camera.position.y.toFixed(1)},${camera.position.z.toFixed(1)} | canvas: ${wh}`,
+        )
         setStatus('ready')
       } catch (err) {
         console.error('[SplatViewer] error cargando splat:', err)
@@ -141,6 +150,11 @@ export default function SplatViewer({ url, className }: Props) {
       {status === 'error' && (
         <div className="absolute inset-0 flex items-center justify-center text-red-400">
           <p className="text-sm">No se pudo cargar el tour 3D.</p>
+        </div>
+      )}
+      {debug && (
+        <div className="absolute top-2 left-2 bg-black/70 text-green-400 text-[10px] font-mono px-2 py-1 rounded max-w-[90%] pointer-events-none">
+          [{status}] {diag || 'sin datos aún'}
         </div>
       )}
     </div>

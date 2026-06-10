@@ -179,7 +179,7 @@ export default function RevisarPage() {
       {/* Viewer — render directo (sin iframe) para que tome toda la altura disponible */}
       <div className="flex-1 relative min-h-0">
         {spzUrl ? (
-          <SplatViewer url={spzUrl} className="absolute inset-0" />
+          <SplatViewer url={spzUrl} className="absolute inset-0" debug />
         ) : (
           <div className="flex items-center justify-center h-full text-gray-600">
             Archivo del tour no disponible
