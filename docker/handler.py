@@ -1,5 +1,14 @@
+import subprocess, sys
+
+# Garantizar deps de simple_trainer aunque la imagen sea vieja (caché de RunPod)
+try:
+    import viser  # noqa: F401
+except ImportError:
+    print("[startup] viser no encontrado — instalando...", flush=True)
+    subprocess.run([sys.executable, "-m", "pip", "install", "viser", "nerfview", "-q"], check=True)
+    print("[startup] viser instalado", flush=True)
+
 import runpod
-import subprocess
 import os
 import shutil
 import requests
