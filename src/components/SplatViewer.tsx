@@ -137,8 +137,11 @@ export default function SplatViewer({ url, className, debug }: Props) {
   }, [url])
 
   return (
-    <div className={className ?? 'w-full h-full'} style={{ position: 'relative', touchAction: 'none' }}>
-      <div ref={containerRef} className="absolute inset-0" />
+    // No fijar position en inline style: dejaría que sobrescriba el `absolute` del
+    // className (causaba altura 0). El className define posición/tamaño; si no viene,
+    // usar relative+full. El canvas interno llena este contenedor.
+    <div className={className ? `${className}` : 'relative w-full h-full'} style={{ touchAction: 'none' }}>
+      <div ref={containerRef} className="w-full h-full" />
       {status === 'loading' && (
         <div className="absolute inset-0 flex items-center justify-center text-gray-400 pointer-events-none">
           <div className="text-center">
