@@ -40,8 +40,10 @@ RUN pip install --no-cache-dir \
 #    NO lo compilamos en el build: requiere nvcc + CUDA en el runner de CI (que no tiene GPU),
 #    y en el worker de RunPod compilaría en cold start. El fallback es suficiente para validación.
 
-# 5) código de gsplat (simple_trainer.py + datasets/colmap.py)
-RUN git clone --depth 1 https://github.com/nerfstudio-project/gsplat /opt/gsplat
+# 5) código de gsplat en el tag exacto v1.5.3 — debe coincidir con el wheel instalado.
+#    HEAD del repo ya tiene código para gsplat 1.6+ (color_correct, etc.) que no existe
+#    en el wheel 1.5.3+pt21cu121, causando ImportError.
+RUN git clone --depth 1 --branch v1.5.3 https://github.com/nerfstudio-project/gsplat /opt/gsplat
 
 # 6) ply_to_spz v2 (gzip, compatible con Spark) — mismo converter que producción
 COPY docker/ply_to_spz_v2.cpp /tmp/ply_to_spz_v2.cpp
