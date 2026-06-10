@@ -40,7 +40,7 @@ export default function SplatViewer({ url, className, debug }: Props) {
     async function init() {
       const THREE = await import('three')
       const { OrbitControls } = await import('three/addons/controls/OrbitControls.js')
-      const { SplatMesh, SplatFileType } = await import('@sparkjsdev/spark')
+      const { SplatMesh, SplatFileType, SparkRenderer } = await import('@sparkjsdev/spark')
 
       if (disposed || !container) return
 
@@ -58,6 +58,11 @@ export default function SplatViewer({ url, className, debug }: Props) {
       renderer.domElement.style.width = '100%'
       renderer.domElement.style.height = '100%'
       renderer.domElement.style.display = 'block'
+
+      // Spark REQUIERE un SparkRenderer en la escena para dibujar los gaussians.
+      // Sin esto, el SplatMesh está en la escena pero no se renderiza → canvas negro.
+      const spark = new SparkRenderer({ renderer })
+      scene.add(spark)
 
       const orbit = new OrbitControls(camera, renderer.domElement)
       orbit.enableDamping = true
