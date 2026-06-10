@@ -33,6 +33,7 @@ RUN pip install --no-cache-dir \
     "numpy<2.0.0" scipy scikit-learn opencv-python-headless "imageio[ffmpeg]" \
     "tyro>=0.8.8" tqdm Pillow "torchmetrics[image]" tensorboard \
     runpod requests boto3 \
+    viser nerfview \
     "git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e"
 
 # 4) fused-ssim es opcional — gsplat detecta su ausencia y usa torchmetrics.SSIM.
