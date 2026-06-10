@@ -24,15 +24,20 @@ RUN wget -q "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin" \
 RUN pip3 install --no-cache-dir runpod boto3 pillow numpy requests
 
 # ply_to_spz — convierte .ply → .spz (nianticlabs/spz, C++ con CMake)
+# IMPORTANTE: reemplazamos el ply_to_spz.cpp del repo por el nuestro, que fuerza
+# formato spz versión 2 (gzip). El HEAD del repo genera v4 (ZSTD) que los viewers
+# web como Spark NO leen (solo soportan v1-3 gzip).
+COPY docker/ply_to_spz_v2.cpp /tmp/ply_to_spz_v2.cpp
 RUN git clone --depth=1 https://github.com/nianticlabs/spz.git /tmp/spz && \
+    cp /tmp/ply_to_spz_v2.cpp /tmp/spz/cli_tools/src/ply_to_spz.cpp && \
     cd /tmp/spz && \
     cmake -B build -DSPZ_BUILD_TOOLS=ON -DCMAKE_BUILD_TYPE=Release . && \
     cmake --build build --parallel 2 && \
     find /tmp/spz/build -name "ply_to_spz" -type f -exec cp {} /usr/local/bin/ply_to_spz \; && \
     test -f /usr/local/bin/ply_to_spz || (echo "ERROR: ply_to_spz no encontrado tras el build" && exit 1) && \
     chmod +x /usr/local/bin/ply_to_spz && \
-    rm -rf /tmp/spz && \
-    echo "ply_to_spz OK"
+    rm -rf /tmp/spz /tmp/ply_to_spz_v2.cpp && \
+    echo "ply_to_spz OK (v2 forzado)"
 
 # LibTorch
 RUN wget -v \
