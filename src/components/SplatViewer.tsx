@@ -8,7 +8,7 @@ interface Props {
 }
 
 // Viewer de Gaussian Splatting basado en Spark (@sparkjsdev/spark) sobre Three.js.
-// Spark soporta .spz nativo — el formato que genera nuestro pipeline para entrega.
+// Spark soporta .spz nativo (formato v1-3 gzip) — lo que genera nuestro pipeline.
 export default function SplatViewer({ url, className }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -19,11 +19,21 @@ export default function SplatViewer({ url, className }: Props) {
 
     let disposed = false
     let raf = 0
-    // refs locales para cleanup
     let renderer: import('three').WebGLRenderer | null = null
+    let camera: import('three').PerspectiveCamera | null = null
     let controls: { update: () => void; dispose: () => void } | null = null
     let splat: { dispose: () => void } | null = null
-    let onResize: (() => void) | null = null
+    let resizeObserver: ResizeObserver | null = null
+
+    // Tamaño robusto: lee dimensiones reales del contenedor (no 0 al montar).
+    function applySize() {
+      if (!renderer || !camera || !container) return
+      const w = container.clientWidth || window.innerWidth
+      const h = container.clientHeight || window.innerHeight
+      renderer.setSize(w, h, false)
+      camera.aspect = w / h
+      camera.updateProjectionMatrix()
+    }
 
     async function init() {
       const THREE = await import('three')
@@ -33,48 +43,52 @@ export default function SplatViewer({ url, className }: Props) {
       if (disposed || !container) return
 
       const scene = new THREE.Scene()
-      const camera = new THREE.PerspectiveCamera(
-        60,
-        container.clientWidth / container.clientHeight,
-        0.1,
-        1000,
-      )
+      const w0 = container.clientWidth || window.innerWidth
+      const h0 = container.clientHeight || window.innerHeight
+      camera = new THREE.PerspectiveCamera(60, w0 / h0, 0.01, 1000)
       camera.position.set(0, 0, 5)
 
       renderer = new THREE.WebGLRenderer({ antialias: true })
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-      renderer.setSize(container.clientWidth, container.clientHeight)
+      renderer.setSize(w0, h0, false)
       renderer.setClearColor(0x000000, 0)
       container.appendChild(renderer.domElement)
+      renderer.domElement.style.width = '100%'
+      renderer.domElement.style.height = '100%'
+      renderer.domElement.style.display = 'block'
 
       const orbit = new OrbitControls(camera, renderer.domElement)
       orbit.enableDamping = true
       orbit.dampingFactor = 0.05
       controls = orbit
 
+      // Re-dimensiona cuando el contenedor cambia de tamaño (incluye 0→real al montar).
+      resizeObserver = new ResizeObserver(() => applySize())
+      resizeObserver.observe(container)
+
       const mesh = new SplatMesh({ url, fileType: SplatFileType.SPZ })
-      // Los splats de OpenSplat/COLMAP vienen con Y invertido respecto a Three.js.
-      // 180° en X los pone derechos.
-      mesh.quaternion.set(1, 0, 0, 0)
+      mesh.quaternion.set(1, 0, 0, 0) // splats de COLMAP/OpenSplat: Y invertido → 180° en X
       scene.add(mesh)
       splat = mesh
 
       try {
         await mesh.initialized
         if (disposed) return
+        applySize()
 
-        // Auto-encuadre con el bounding box REAL de Spark (getBoundingBox),
-        // no el Box3.setFromObject de Three.js (no funciona con geometría procedural).
-        // centers_only=true evita que splats con escala grande inflen la caja.
+        // Encuadre con el getBoundingBox NATIVO de Spark (Box3.setFromObject de Three
+        // no funciona con la geometría procedural de Spark → caja vacía).
         mesh.updateMatrixWorld(true)
         const box = mesh.getBoundingBox(true)
-        if (box && !box.isEmpty() && isFinite(box.min.x)) {
-          const center = box.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld)
-          const size = box.getSize(new THREE.Vector3())
-          const maxDim = Math.max(size.x, size.y, size.z) || 4
+        const size = box.getSize(new THREE.Vector3())
+        const center = box.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld)
+        console.log('[SplatViewer] bbox size:', size.toArray(), 'center:', center.toArray())
+
+        const maxDim = Math.max(size.x, size.y, size.z)
+        if (box && !box.isEmpty() && isFinite(maxDim) && maxDim > 0) {
           const dist = maxDim * 1.5
           orbit.target.copy(center)
-          camera.position.set(center.x, center.y + size.y * 0.1, center.z + dist)
+          camera.position.set(center.x, center.y + size.y * 0.15, center.z + dist)
           camera.near = Math.max(dist / 1000, 0.001)
           camera.far = dist * 100
           camera.updateProjectionMatrix()
@@ -90,27 +104,20 @@ export default function SplatViewer({ url, className }: Props) {
       const animate = () => {
         raf = requestAnimationFrame(animate)
         orbit.update()
-        renderer!.render(scene, camera)
+        renderer!.render(scene, camera!)
       }
       animate()
-
-      onResize = () => {
-        if (!container || !renderer) return
-        const w = container.clientWidth
-        const h = container.clientHeight
-        camera.aspect = w / h
-        camera.updateProjectionMatrix()
-        renderer.setSize(w, h)
-      }
-      window.addEventListener('resize', onResize)
     }
 
-    init().catch(() => { if (!disposed) setStatus('error') })
+    init().catch((err) => {
+      console.error('[SplatViewer] init falló:', err)
+      if (!disposed) setStatus('error')
+    })
 
     return () => {
       disposed = true
       cancelAnimationFrame(raf)
-      if (onResize) window.removeEventListener('resize', onResize)
+      resizeObserver?.disconnect()
       controls?.dispose()
       splat?.dispose()
       if (renderer) {
@@ -122,7 +129,7 @@ export default function SplatViewer({ url, className }: Props) {
 
   return (
     <div className={className ?? 'w-full h-full'} style={{ position: 'relative', touchAction: 'none' }}>
-      <div ref={containerRef} className="w-full h-full" />
+      <div ref={containerRef} className="absolute inset-0" />
       {status === 'loading' && (
         <div className="absolute inset-0 flex items-center justify-center text-gray-400 pointer-events-none">
           <div className="text-center">

@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { supabase, Project } from '@/lib/supabase'
 import { getPublicUrl } from '@/lib/r2'
+import SplatViewer from '@/components/SplatViewer'
 
 export default function RevisarPage() {
   const { id } = useParams<{ id: string }>()
@@ -128,7 +129,7 @@ export default function RevisarPage() {
   const spzUrl = project.spz_r2_key ? getPublicUrl(project.spz_r2_key) : null
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <div className="h-screen overflow-hidden bg-gray-950 text-white flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950/90 backdrop-blur">
         <div>
@@ -175,14 +176,10 @@ export default function RevisarPage() {
         <div className="px-6 py-2 bg-red-950/40 border-b border-red-800 text-red-400 text-sm">{inlineError}</div>
       )}
 
-      {/* Viewer */}
-      <div className="flex-1 relative">
+      {/* Viewer — render directo (sin iframe) para que tome toda la altura disponible */}
+      <div className="flex-1 relative min-h-0">
         {spzUrl ? (
-          <iframe
-            src={`/viewer?spz=${encodeURIComponent(spzUrl)}`}
-            className="w-full h-full border-0"
-            title="Tour 3D"
-          />
+          <SplatViewer url={spzUrl} className="absolute inset-0" />
         ) : (
           <div className="flex items-center justify-center h-full text-gray-600">
             Archivo del tour no disponible
