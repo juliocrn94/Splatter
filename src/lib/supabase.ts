@@ -10,6 +10,18 @@ export type ProjectStatus =
   | 'deleted'
 
 export type ProjectQuality = 'standard' | 'hq'
+export type FeatureExtractor = 'sift' | 'superpoint'
+export type Trainer = 'opensplat' | 'gsplat'
+
+export const FEATURE_EXTRACTOR_LABELS: Record<FeatureExtractor, string> = {
+  sift:        'SIFT (rápido, default)',
+  superpoint:  'SuperPoint + LightGlue (mejor calidad, ~5 min extra)',
+}
+
+export const TRAINER_LABELS: Record<Trainer, string> = {
+  opensplat: 'OpenSplat (estable)',
+  gsplat:    'gsplat antialiased (experimental)',
+}
 
 export interface Project {
   id: string
@@ -27,6 +39,8 @@ export interface Project {
   spz_r2_key: string | null
   runpod_job_id: string | null
   quality: ProjectQuality
+  feature_extractor: FeatureExtractor
+  trainer: Trainer
   processing_started_at: string | null
   delivered_at: string | null
   notes: string | null

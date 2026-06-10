@@ -138,3 +138,13 @@ CREATE POLICY "service role full access" ON processing_metrics
 -- Requiere mover el dashboard y proyecto/[id]/page.tsx a server components
 -- que usen supabaseAdmin() en lugar del cliente anon.
 -- El tour/[slug]/page.tsx ya usa supabaseAdmin() y no requiere la política anon.
+
+-- ─── Pipeline config por proyecto ─────────────────────────────────────────────
+-- Permite al operador elegir qué feature extractor y trainer usar por proyecto.
+-- feature_extractor: 'sift' (COLMAP clásico, rápido) | 'superpoint' (hloc, mejor calidad)
+-- trainer:           'opensplat' (default actual) | 'gsplat' (experimental, en validación)
+ALTER TABLE projects
+  ADD COLUMN IF NOT EXISTS feature_extractor TEXT NOT NULL DEFAULT 'sift'
+    CHECK (feature_extractor IN ('sift', 'superpoint')),
+  ADD COLUMN IF NOT EXISTS trainer TEXT NOT NULL DEFAULT 'opensplat'
+    CHECK (trainer IN ('opensplat', 'gsplat'));

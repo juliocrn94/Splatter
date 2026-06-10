@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   const { data: project, error: fetchErr } = await db
     .from('projects')
-    .select('id, status, video_r2_key, project_code, ply_r2_key')
+    .select('id, status, video_r2_key, project_code, ply_r2_key, feature_extractor, trainer')
     .eq('id', projectId)
     .single()
 
@@ -75,12 +75,14 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         input: {
-          project_id:     projectId,
-          video_url:      primaryVideoUrl,
-          video_urls:     videoDownloadUrls,  // array para multi-video (2B)
+          project_id:        projectId,
+          video_url:         primaryVideoUrl,
+          video_urls:        videoDownloadUrls,
           quality,
-          ply_upload_url: plyUploadUrl,
-          spz_upload_url: spzUploadUrl,
+          feature_extractor: project.feature_extractor ?? 'sift',
+          trainer:           project.trainer ?? 'opensplat',
+          ply_upload_url:    plyUploadUrl,
+          spz_upload_url:    spzUploadUrl,
         },
         webhook: webhookUrl,
       }),
