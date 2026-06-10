@@ -53,7 +53,8 @@ export default function SplatViewer({ url, className }: Props) {
       controls = orbit
 
       const mesh = new SplatMesh({ url, fileType: SplatFileType.SPZ })
-      // Los splats de OpenSplat vienen invertidos en el eje vertical respecto a Three.js.
+      // Los splats de OpenSplat/COLMAP vienen con Y invertido respecto a Three.js.
+      // 180° en X los pone derechos.
       mesh.quaternion.set(1, 0, 0, 0)
       scene.add(mesh)
       splat = mesh
@@ -62,22 +63,26 @@ export default function SplatViewer({ url, className }: Props) {
         await mesh.initialized
         if (disposed) return
 
-        // Auto-encuadre: centrar la cámara según el bounding box del splat.
-        const box = new THREE.Box3().setFromObject(mesh)
-        if (box.isEmpty() === false && isFinite(box.min.x)) {
-          const center = box.getCenter(new THREE.Vector3())
+        // Auto-encuadre con el bounding box REAL de Spark (getBoundingBox),
+        // no el Box3.setFromObject de Three.js (no funciona con geometría procedural).
+        // centers_only=true evita que splats con escala grande inflen la caja.
+        mesh.updateMatrixWorld(true)
+        const box = mesh.getBoundingBox(true)
+        if (box && !box.isEmpty() && isFinite(box.min.x)) {
+          const center = box.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld)
           const size = box.getSize(new THREE.Vector3())
-          const maxDim = Math.max(size.x, size.y, size.z)
-          const dist = maxDim > 0 ? maxDim * 1.8 : 5
+          const maxDim = Math.max(size.x, size.y, size.z) || 4
+          const dist = maxDim * 1.5
           orbit.target.copy(center)
-          camera.position.set(center.x, center.y, center.z + dist)
-          camera.near = Math.max(dist / 1000, 0.01)
+          camera.position.set(center.x, center.y + size.y * 0.1, center.z + dist)
+          camera.near = Math.max(dist / 1000, 0.001)
           camera.far = dist * 100
           camera.updateProjectionMatrix()
           orbit.update()
         }
         setStatus('ready')
-      } catch {
+      } catch (err) {
+        console.error('[SplatViewer] error cargando splat:', err)
         if (!disposed) setStatus('error')
         return
       }
