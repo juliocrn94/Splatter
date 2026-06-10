@@ -54,8 +54,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // Idempotencia: ignorar si el proyecto ya está en un estado terminal o en un nuevo job
-  const TERMINAL_STATUSES = ['reviewing', 'reprocessing', 'delivered']
+  // Idempotencia: ignorar solo si el proyecto YA terminó un job.
+  // 'processing' y 'reprocessing' son estados ACTIVOS (job en curso) — el webhook
+  // DEBE poder sacarlos de ahí. Incluir 'reprocessing' aquí causaba que los
+  // reprocesos completaran en RunPod pero nunca pasaran a 'reviewing'.
+  const TERMINAL_STATUSES = ['reviewing', 'delivered']
   if (TERMINAL_STATUSES.includes(project.status)) {
     return NextResponse.json({ ok: true })
   }
