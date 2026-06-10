@@ -3,7 +3,7 @@ name: Build & Push Docker
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, gsplat-validation]
     paths:
       - 'docker/**'
 
@@ -32,4 +32,4 @@ jobs:
           push: true
           tags: |
             ghcr.io/juliocrn94/splatter:${{ github.sha }}
-            ghcr.io/juliocrn94/splatter:latest
+            ghcr.io/juliocrn94/splatter:${{ github.ref_name }}
