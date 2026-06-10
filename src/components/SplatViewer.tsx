@@ -50,8 +50,10 @@ export default function SplatViewer({ url, className, debug }: Props) {
       camera = new THREE.PerspectiveCamera(60, w0 / h0, 0.01, 1000)
       camera.position.set(0, 0, 5)
 
-      renderer = new THREE.WebGLRenderer({ antialias: true })
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+      // antialias: false — en splats el MSAA no ayuda y destruye fps
+      renderer = new THREE.WebGLRenderer({ antialias: false })
+      // Cap pixelRatio a 1.5: iPhones tienen DPR=3 → renderizarían 9× los píxeles
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
       renderer.setSize(w0, h0, false)
       renderer.setClearColor(0x000000, 0)
       container.appendChild(renderer.domElement)
@@ -60,8 +62,8 @@ export default function SplatViewer({ url, className, debug }: Props) {
       renderer.domElement.style.display = 'block'
 
       // Spark REQUIERE un SparkRenderer en la escena para dibujar los gaussians.
-      // Sin esto, el SplatMesh está en la escena pero no se renderiza → canvas negro.
-      const spark = new SparkRenderer({ renderer })
+      // maxStdDev: sqrt(5) ≈ 2.24 (default sqrt(8)) — mejor fps con calidad similar
+      const spark = new SparkRenderer({ renderer, maxStdDev: Math.sqrt(5) })
       scene.add(spark)
 
       const orbit = new OrbitControls(camera, renderer.domElement)
