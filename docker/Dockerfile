@@ -61,3 +61,4 @@ RUN chmod +x /opt/process_splat.sh
 
 WORKDIR /opt
 CMD ["python3", "/opt/handler.py"]
+
