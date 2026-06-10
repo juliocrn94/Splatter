@@ -1,11 +1,10 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
+import SplatViewer from '@/components/SplatViewer'
 
-// @playcanvas/supersplat-viewer — viewer self-hosted para el dashboard del operador
-// Carga .spz directamente desde R2 (CORS configurado en bucket)
+// Valida que la URL del .spz venga del bucket R2 esperado (evita SSRF/abuso del iframe).
 function isAllowedSpzUrl(url: string): boolean {
   try {
     const parsed  = new URL(url)
@@ -17,26 +16,9 @@ function isAllowedSpzUrl(url: string): boolean {
 }
 
 function ViewerContent() {
-  const params  = useSearchParams()
-  const rawUrl  = params.get('spz')
-  const spzUrl  = rawUrl && isAllowedSpzUrl(rawUrl) ? rawUrl : null
-  const containerRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!containerRef.current || !spzUrl) return
-
-    async function initViewer() {
-      // @ts-expect-error — supersplat-viewer types mínimos
-      const { SuperSplatViewer } = await import('@playcanvas/supersplat-viewer')
-
-      new SuperSplatViewer({
-        container: containerRef.current!,
-        url: spzUrl!,
-      })
-    }
-
-    initViewer()
-  }, [spzUrl])
+  const params = useSearchParams()
+  const rawUrl = params.get('spz')
+  const spzUrl = rawUrl && isAllowedSpzUrl(rawUrl) ? rawUrl : null
 
   if (!spzUrl) {
     return (
@@ -46,7 +28,7 @@ function ViewerContent() {
     )
   }
 
-  return <div ref={containerRef} className="w-full h-screen bg-black" />
+  return <SplatViewer url={spzUrl} className="w-full h-screen bg-black" />
 }
 
 export default function ViewerPage() {
