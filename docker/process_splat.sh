@@ -8,7 +8,9 @@ set -euo pipefail
 VIDEO=$1
 PROJECT=${2:-"proyecto"}
 QUALITY=${3:-"standard"}
-MAX_FRAMES=400
+# 150 frames es suficiente para reconstruir una habitación con COLMAP.
+# 400 frames → ~20GB RAM en feature extraction → OOM en el contenedor RunPod.
+MAX_FRAMES=150
 
 if [ -z "$VIDEO" ] || [ -z "$PROJECT" ]; then
   echo "Uso: $0 <video> <project_id> [standard|hq]"
@@ -20,6 +22,10 @@ SPARSE_DIR="./sparse"
 PLY_OUT="./${PROJECT}.ply"
 SPZ_OUT="./${PROJECT}.spz"
 
+# COLMAP y sus matchers intentan abrir un display Qt en headless — esto los crashea.
+# offscreen evita el SIGABRT en sequential_matcher/vocab_tree_matcher.
+export QT_QPA_PLATFORM=offscreen
+
 mkdir -p "$FRAMES_DIR" "$SPARSE_DIR"
 
 echo "=== Splatter pipeline ==="
@@ -30,8 +36,10 @@ echo ""
 
 # ─── Paso 1: Extraer frames ──────────────────────────────────────────────────
 echo "[1/4] Extrayendo frames del video..."
+# fps=1: con videos de 3-5 min genera 180-300 frames → submuestra a 150.
+# fps=2 generaba 360-600 frames → demasiados para la RAM del contenedor RunPod.
 ffmpeg -i "$VIDEO" \
-  -vf "fps=2" \
+  -vf "fps=1" \
   -qscale:v 2 \
   "$FRAMES_DIR/frame_%04d.jpg" \
   -hide_banner -loglevel error
@@ -65,18 +73,28 @@ fi
 
 # ─── Paso 2: COLMAP feature extraction ───────────────────────────────────────
 echo "[2/4] Extrayendo features (COLMAP)..."
-# Usar if/then para que set -e no cancele el script si GPU no está disponible
+# max_image_size=1600: COLMAP escala imágenes antes de SIFT → ~60% menos RAM por frame.
+# max_num_features=4096: suficiente para Gaussian Splatting, reduce RAM de descriptores.
+# num_threads=2: limita paralelismo CPU para evitar picos de RAM simultáneos.
+# use_gpu=1 puede crashear en contenedores headless sin acceso correcto a CUDA/GL
+# — el fallback a CPU con estos parámetros es estable y suficiente.
 if ! colmap feature_extractor \
     --database_path "./colmap.db" \
     --image_path "$FRAMES_DIR" \
     --ImageReader.camera_model OPENCV \
-    --SiftExtraction.use_gpu 1 2>/dev/null; then
-  echo "  → GPU SIFT no disponible, usando CPU..."
+    --SiftExtraction.use_gpu 1 \
+    --SiftExtraction.max_image_size 1600 \
+    --SiftExtraction.max_num_features 4096 \
+    --SiftExtraction.num_threads 2 2>/dev/null; then
+  echo "  → GPU SIFT no disponible, usando CPU con parámetros de memoria reducida..."
   colmap feature_extractor \
     --database_path "./colmap.db" \
     --image_path "$FRAMES_DIR" \
     --ImageReader.camera_model OPENCV \
-    --SiftExtraction.use_gpu 0
+    --SiftExtraction.use_gpu 0 \
+    --SiftExtraction.max_image_size 1600 \
+    --SiftExtraction.max_num_features 4096 \
+    --SiftExtraction.num_threads 2
 fi
 
 # ─── Paso 3: COLMAP matching + mapper ────────────────────────────────────────
