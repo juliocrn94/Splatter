@@ -35,9 +35,9 @@ RUN pip install --no-cache-dir \
     runpod requests boto3 \
     "git+https://github.com/rmbrualla/pycolmap@cc7ea4b7301720ac29287dbe450952511b32125e"
 
-# 4) fused-ssim — simple_trainer 'default' lo usa para la loss SSIM. Compila en build
-#    (necesita nvcc del devel image + TORCH_CUDA_ARCH_LIST). Build, no cold start.
-RUN pip install --no-cache-dir "git+https://github.com/rahul-goel/fused-ssim@main"
+# 4) fused-ssim es opcional — gsplat detecta su ausencia y usa torchmetrics.SSIM.
+#    NO lo compilamos en el build: requiere nvcc + CUDA en el runner de CI (que no tiene GPU),
+#    y en el worker de RunPod compilaría en cold start. El fallback es suficiente para validación.
 
 # 5) código de gsplat (simple_trainer.py + datasets/colmap.py)
 RUN git clone --depth 1 https://github.com/nerfstudio-project/gsplat /opt/gsplat
