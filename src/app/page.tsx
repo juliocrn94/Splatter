@@ -160,6 +160,9 @@ export default function HomePage() {
             <p className="text-gray-400 text-sm mt-1">Tours 3D — Dashboard operador</p>
           </div>
           <div className="flex items-center gap-3">
+            <Link href="/ajustes" className="text-sm text-gray-500 hover:text-gray-300 transition-colors" title="Ajustes y defaults">
+              ⚙
+            </Link>
             <Link href="/guia" className="text-sm text-gray-400 hover:text-white border border-gray-700 px-4 py-2 rounded-lg transition-colors">
               Cómo grabar
             </Link>

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
 import { getUploadWarning } from '@/lib/r2'
 import { useVideoUpload } from '@/hooks/useVideoUpload'
+import { type FeatureExtractor, type Trainer } from '@/lib/supabase'
 
 const CIUDADES = [
   { code: 'CDMX', label: 'Ciudad de México' },
@@ -108,6 +109,17 @@ export default function NuevoPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
+  // Pipeline config — lee defaults de localStorage (configurables en /ajustes)
+  const [featureExtractor, setFeatureExtractor] = useState<FeatureExtractor>(() => {
+    if (typeof window === 'undefined') return 'sift'
+    return (localStorage.getItem('default_feature_extractor') as FeatureExtractor) ?? 'sift'
+  })
+  const [trainer, setTrainer] = useState<Trainer>(() => {
+    if (typeof window === 'undefined') return 'opensplat'
+    return (localStorage.getItem('default_trainer') as Trainer) ?? 'opensplat'
+  })
+  const [showPipelineConfig, setShowPipelineConfig] = useState(false)
+
   function handleMainFile(f: File) {
     setMainFile(f)
     setMainWarning(getUploadWarning(f.size))
@@ -132,11 +144,11 @@ export default function NuevoPage() {
     setError('')
 
     try {
-      // 1. Crear proyecto
+      // 1. Crear proyecto (con pipeline config del form)
       const createRes = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, clientName, city }),
+        body: JSON.stringify({ name, clientName, city, feature_extractor: featureExtractor, trainer }),
       })
       if (!createRes.ok) throw new Error('No se pudo crear el proyecto')
       const { project } = await createRes.json()
@@ -281,6 +293,51 @@ export default function NuevoPage() {
               ))}
             </div>
           )}
+
+          {/* Config de pipeline — colapsable, antes de procesar */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowPipelineConfig(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-400 hover:text-gray-200 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <span>Configuración de pipeline</span>
+                <span className="text-[11px] bg-gray-800 text-gray-500 px-2 py-0.5 rounded">
+                  {featureExtractor === 'sift' ? 'SIFT' : 'SuperPoint'} · {trainer === 'opensplat' ? 'OpenSplat' : 'gsplat'}
+                </span>
+              </span>
+              <span className="text-gray-600">{showPipelineConfig ? '▲' : '▼'}</span>
+            </button>
+            {showPipelineConfig && (
+              <div className="px-4 pb-4 space-y-4 border-t border-gray-800 pt-4">
+                <div className="space-y-1.5">
+                  <p className="text-xs text-gray-500">Extracción de features (SfM)</p>
+                  <div className="flex gap-2">
+                    {(['sift', 'superpoint'] as FeatureExtractor[]).map(opt => (
+                      <button key={opt} type="button" onClick={() => setFeatureExtractor(opt)}
+                        className={`flex-1 text-xs px-3 py-2.5 rounded-lg border transition-colors ${featureExtractor === opt ? 'bg-violet-600/20 border-violet-500 text-violet-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                        <span className="font-medium block">{opt === 'sift' ? 'SIFT' : 'SuperPoint + LightGlue'}</span>
+                        <span className="text-[10px] text-gray-500 block mt-0.5">{opt === 'sift' ? 'Rápido, estable' : 'Mejor calidad en interiores +~5 min'}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <p className="text-xs text-gray-500">Trainer de Gaussian Splatting</p>
+                  <div className="flex gap-2">
+                    {(['opensplat', 'gsplat'] as Trainer[]).map(opt => (
+                      <button key={opt} type="button" onClick={() => setTrainer(opt)}
+                        className={`flex-1 text-xs px-3 py-2.5 rounded-lg border transition-colors ${trainer === opt ? 'bg-violet-600/20 border-violet-500 text-violet-300' : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'}`}>
+                        <span className="font-medium block">{opt === 'opensplat' ? 'OpenSplat' : 'gsplat'}</span>
+                        <span className="text-[10px] text-gray-500 block mt-0.5">{opt === 'opensplat' ? 'Estable, probado' : 'Experimental, antialiased'}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {error && (
             <p className="text-red-400 text-sm bg-red-950/30 rounded-lg px-4 py-3">{error}</p>

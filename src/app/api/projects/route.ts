@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   const authError = await requireAuth(req)
   if (authError) return authError
 
-  const { name, clientName, city = 'CDMX' } = await req.json()
+  const { name, clientName, city = 'CDMX', feature_extractor = 'sift', trainer = 'opensplat' } = await req.json()
 
   if (!name || !clientName) {
     return NextResponse.json({ error: 'name y clientName son requeridos' }, { status: 400 })
@@ -48,6 +48,8 @@ export async function POST(req: NextRequest) {
       project_code: projectCode,
       city,
       status: 'uploading',
+      feature_extractor: ['sift', 'superpoint'].includes(feature_extractor) ? feature_extractor : 'sift',
+      trainer: ['opensplat', 'gsplat'].includes(trainer) ? trainer : 'opensplat',
     })
     .select()
     .single()

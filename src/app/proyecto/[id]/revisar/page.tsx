@@ -3,10 +3,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useDropzone } from 'react-dropzone'
-import { supabase, Project, type FeatureExtractor, type Trainer } from '@/lib/supabase'
+import { supabase, Project } from '@/lib/supabase'
 import { getPublicUrl } from '@/lib/r2'
 import SplatViewer from '@/components/SplatViewer'
-import PipelineConfig from '@/components/PipelineConfig'
 
 export default function RevisarPage() {
   const { id } = useParams<{ id: string }>()
@@ -20,7 +19,6 @@ export default function RevisarPage() {
   const [correctionProgress, setCorrectionProgress] = useState(0)
   const [correctionError, setCorrectionError] = useState('')
   const [inlineError, setInlineError] = useState('')
-  const [showPipelineConfig, setShowPipelineConfig] = useState(false)
 
   useEffect(() => {
     supabase
@@ -158,13 +156,6 @@ export default function RevisarPage() {
             Mejorar zona
           </button>
           <button
-            onClick={() => setShowPipelineConfig(v => !v)}
-            className={`text-sm px-3 py-2 rounded-lg border transition-colors ${showPipelineConfig ? 'border-violet-500 text-violet-300 bg-violet-600/10' : 'border-gray-700 text-gray-400 hover:border-gray-600'}`}
-            title="Configuración del pipeline de procesamiento"
-          >
-            ⚙ Pipeline
-          </button>
-          <button
             onClick={() => setShowHqConfirm(true)}
             disabled={reprocessing}
             className="text-sm text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 px-4 py-2 rounded-lg transition-colors"
@@ -180,21 +171,6 @@ export default function RevisarPage() {
           </button>
         </div>
       </div>
-
-      {/* Panel de configuración de pipeline — colapsable */}
-      {showPipelineConfig && project && (
-        <div className="px-6 py-3 border-b border-gray-800 bg-gray-950/60">
-          <PipelineConfig
-            projectId={id}
-            featureExtractor={(project.feature_extractor ?? 'sift') as FeatureExtractor}
-            trainer={(project.trainer ?? 'opensplat') as Trainer}
-            disabled={reprocessing}
-            onSaved={(fe, tr) => {
-              setProject(prev => prev ? { ...prev, feature_extractor: fe, trainer: tr } : prev)
-            }}
-          />
-        </div>
-      )}
 
       {inlineError && (
         <div className="px-6 py-2 bg-red-950/40 border-b border-red-800 text-red-400 text-sm">{inlineError}</div>
