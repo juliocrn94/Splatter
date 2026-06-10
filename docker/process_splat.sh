@@ -76,18 +76,11 @@ echo "[2/4] Extrayendo features (COLMAP)..."
 # max_image_size=1600: COLMAP escala imágenes antes de SIFT → ~60% menos RAM por frame.
 # max_num_features=4096: suficiente para Gaussian Splatting, reduce RAM de descriptores.
 # num_threads=2: limita paralelismo CPU para evitar picos de RAM simultáneos.
-# use_gpu=1 puede crashear en contenedores headless sin acceso correcto a CUDA/GL
-# — el fallback a CPU con estos parámetros es estable y suficiente.
-if ! colmap feature_extractor \
-    --database_path "./colmap.db" \
-    --image_path "$FRAMES_DIR" \
-    --ImageReader.camera_model OPENCV \
-    --SiftExtraction.use_gpu 1 \
-    --SiftExtraction.max_image_size 1600 \
-    --SiftExtraction.max_num_features 4096 \
-    --SiftExtraction.num_threads 2 2>/dev/null; then
-  echo "  → GPU SIFT no disponible, usando CPU con parámetros de memoria reducida..."
-  colmap feature_extractor \
+# use_gpu=0 OBLIGATORIO: el SIFT en GPU de COLMAP usa OpenGL (SiftGPU), que necesita
+# un contexto de display. En contenedores serverless headless no existe → crashea con
+# "OpenGLContextManager Aborted (core dumped)". El SIFT en CPU no usa OpenGL y es
+# estable. Con 150 frames a max 1600px el costo de CPU es aceptable.
+colmap feature_extractor \
     --database_path "./colmap.db" \
     --image_path "$FRAMES_DIR" \
     --ImageReader.camera_model OPENCV \
@@ -95,16 +88,19 @@ if ! colmap feature_extractor \
     --SiftExtraction.max_image_size 1600 \
     --SiftExtraction.max_num_features 4096 \
     --SiftExtraction.num_threads 2
-fi
 
 # ─── Paso 3: COLMAP matching + mapper ────────────────────────────────────────
 echo "[3/4] Estimando posiciones de cámara (COLMAP)..."
+# SiftMatching.use_gpu=0 OBLIGATORIO por la misma razón que la extracción:
+# SiftGPUFeatureMatcher crea un contexto OpenGL que crashea en headless.
 if ! colmap vocab_tree_matcher \
     --database_path "./colmap.db" \
+    --SiftMatching.use_gpu 0 \
     --VocabTreeMatching.vocab_tree_path /opt/vocab_tree.bin 2>/dev/null; then
   echo "  → vocab_tree_matcher falló, usando sequential_matcher..."
   colmap sequential_matcher \
-    --database_path "./colmap.db"
+    --database_path "./colmap.db" \
+    --SiftMatching.use_gpu 0
 fi
 
 colmap mapper \
