@@ -17,7 +17,10 @@ if [ -z "$VIDEO" ] || [ -z "$PROJECT" ]; then
   exit 1
 fi
 
-FRAMES_DIR="./frames"
+# OpenSplat busca las imágenes en <proyecto>/images/ — el dir DEBE llamarse "images".
+# Pasar ./sparse/0 como proyecto y tener los frames en ./frames hace que OpenSplat
+# no encuentre las imágenes → cvtColor(!_src.empty()) crash.
+FRAMES_DIR="./images"
 SPARSE_DIR="./sparse"
 PLY_OUT="./${PROJECT}.ply"
 SPZ_OUT="./${PROJECT}.spz"
@@ -91,17 +94,13 @@ colmap feature_extractor \
 
 # ─── Paso 3: COLMAP matching + mapper ────────────────────────────────────────
 echo "[3/4] Estimando posiciones de cámara (COLMAP)..."
-# SiftMatching.use_gpu=0 OBLIGATORIO por la misma razón que la extracción:
-# SiftGPUFeatureMatcher crea un contexto OpenGL que crashea en headless.
-if ! colmap vocab_tree_matcher \
-    --database_path "./colmap.db" \
-    --SiftMatching.use_gpu 0 \
-    --VocabTreeMatching.vocab_tree_path /opt/vocab_tree.bin 2>/dev/null; then
-  echo "  → vocab_tree_matcher falló, usando sequential_matcher..."
-  colmap sequential_matcher \
-    --database_path "./colmap.db" \
-    --SiftMatching.use_gpu 0
-fi
+# sequential_matcher es el correcto para frames de video en secuencia (frames
+# consecutivos se solapan). vocab_tree_matcher es para colecciones desordenadas
+# y además segfaultea en esta build de COLMAP. SiftMatching.use_gpu=0 evita el
+# crash de OpenGL en headless.
+colmap sequential_matcher \
+  --database_path "./colmap.db" \
+  --SiftMatching.use_gpu 0
 
 colmap mapper \
   --database_path "./colmap.db" \
@@ -119,7 +118,9 @@ echo "[4/4] Entrenando Gaussian Splat (OpenSplat)..."
 ITERATIONS=30000
 [ "$QUALITY" = "hq" ] && ITERATIONS=50000
 
-opensplat "$SPARSE_DIR/0" \
+# OpenSplat recibe el PROYECTO raíz (cwd = job_dir), que contiene images/ y sparse/0/.
+# Internamente lee sparse/0/*.bin y carga las imágenes desde images/.
+opensplat "." \
   -n $ITERATIONS \
   -o "$PLY_OUT"
 
