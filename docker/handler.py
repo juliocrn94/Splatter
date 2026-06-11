@@ -61,7 +61,16 @@ def handler(job):
     video_urls  = inp.get("video_urls")
     ply_put_url = inp["ply_upload_url"]
     spz_put_url = inp.get("spz_upload_url")
-    quality     = inp.get("quality", "standard")
+    quality            = inp.get("quality", "standard")
+    feature_extractor  = inp.get("feature_extractor", "sift")
+    trainer            = inp.get("trainer", "opensplat")
+
+    # Si llega 'superpoint' pero hloc no está instalado, caer a sift con aviso.
+    # Esto evita que el worker crashee cuando el UI envía superpoint a un endpoint sin hloc.
+    import shutil as _shutil
+    if feature_extractor == "superpoint" and not _shutil.which("hloc") and not os.path.exists("/opt/hloc"):
+        print(f"[{inp.get('project_id','?')}] AVISO: superpoint solicitado pero hloc no instalado — usando sift")
+        feature_extractor = "sift"
 
     if not video_url and not video_urls:
         raise ValueError("PIPELINE_FAILED: Se requiere video_url o video_urls")
@@ -92,7 +101,7 @@ def handler(job):
         # 2. Pipeline: FFmpeg → COLMAP → OpenSplat → .ply + .spz
         print(f"[{project_id}] Iniciando pipeline (quality={quality})...")
         result = subprocess.run(
-            ["/opt/process_splat.sh", video_path, project_id, quality],
+            ["/opt/process_splat.sh", video_path, project_id, quality, feature_extractor, trainer],
             capture_output=True,
             text=True,
             cwd=job_dir,
