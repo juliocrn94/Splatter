@@ -43,7 +43,15 @@ RUN pip install --no-cache-dir \
 # 5) código de gsplat en el tag exacto v1.5.3 — debe coincidir con el wheel instalado.
 #    HEAD del repo ya tiene código para gsplat 1.6+ (color_correct, etc.) que no existe
 #    en el wheel 1.5.3+pt21cu121, causando ImportError.
-RUN git clone --depth 1 --branch v1.5.3 https://github.com/nerfstudio-project/gsplat /opt/gsplat
+RUN git clone --depth 1 --branch v1.5.3 https://github.com/nerfstudio-project/gsplat /opt/gsplat && \
+    # Parchar simple_trainer.py: eliminar imports de color_correct que no existen en el wheel 1.5.3
+    # El tag v1.5.3 del repo tiene código que asume gsplat 1.6+ en el wheel
+    grep -n "color_correct" /opt/gsplat/examples/simple_trainer.py | head -5 && \
+    sed -i '/from gsplat.color_correct import/d' /opt/gsplat/examples/simple_trainer.py && \
+    sed -i 's/color_correct(colors, pixels)/colors/g' /opt/gsplat/examples/simple_trainer.py && \
+    sed -i '/color_correct,$/d' /opt/gsplat/examples/simple_trainer.py && \
+    echo "simple_trainer.py parchado OK" && \
+    grep -c "color_correct" /opt/gsplat/examples/simple_trainer.py || true
 
 # 6) ply_to_spz v2 (gzip, compatible con Spark) — mismo converter que producción
 COPY docker/ply_to_spz_v2.cpp /tmp/ply_to_spz_v2.cpp
