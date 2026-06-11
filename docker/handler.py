@@ -8,6 +8,28 @@ except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "viser", "nerfview", "-q"], check=True)
     print("[startup] viser instalado", flush=True)
 
+# Pre-flight: verificar que simple_trainer.py importa sin errores
+# Esto evita fallos silenciosos 7 minutos después del inicio
+import sys as _sys, subprocess as _subprocess
+
+def _preflight_check():
+    result = _subprocess.run(
+        [_sys.executable, "-c",
+         "import sys; sys.path.insert(0,'/opt/gsplat/examples'); "
+         "import simple_trainer; print('[preflight] simple_trainer OK')"],
+        capture_output=True, text=True, timeout=60
+    )
+    if result.returncode != 0:
+        print(f"[preflight] FALLO al importar simple_trainer:\n{result.stderr[-500:]}", flush=True)
+        raise RuntimeError(f"PREFLIGHT_FAILED: {result.stderr[-300:]}")
+    print(result.stdout.strip(), flush=True)
+
+try:
+    _preflight_check()
+except RuntimeError as _e:
+    print(f"[startup] preflight falló: {_e}", flush=True)
+    raise
+
 import runpod
 import os
 import shutil
