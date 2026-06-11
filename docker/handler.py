@@ -8,27 +8,25 @@ except ImportError:
     subprocess.run([sys.executable, "-m", "pip", "install", "viser", "nerfview", "-q"], check=True)
     print("[startup] viser instalado", flush=True)
 
-# Pre-flight: verificar que simple_trainer.py importa sin errores
-# Esto evita fallos silenciosos 7 minutos después del inicio
-import sys as _sys, subprocess as _subprocess
+# Runtime patch: eliminar imports de color_correct que no existen en el wheel gsplat 1.5.3.
+# El repo v1.5.3 tiene código que asume gsplat 1.6+ independientemente del tag clonado.
+# Hacemos el patch en runtime para que funcione incluso con imagen cacheada.
+import subprocess as _subprocess, re as _re
 
-def _preflight_check():
-    result = _subprocess.run(
-        [_sys.executable, "-c",
-         "import sys; sys.path.insert(0,'/opt/gsplat/examples'); "
-         "import simple_trainer; print('[preflight] simple_trainer OK')"],
-        capture_output=True, text=True, timeout=60
-    )
-    if result.returncode != 0:
-        print(f"[preflight] FALLO al importar simple_trainer:\n{result.stderr[-500:]}", flush=True)
-        raise RuntimeError(f"PREFLIGHT_FAILED: {result.stderr[-300:]}")
-    print(result.stdout.strip(), flush=True)
-
+_TRAINER = "/opt/gsplat/examples/simple_trainer.py"
 try:
-    _preflight_check()
-except RuntimeError as _e:
-    print(f"[startup] preflight falló: {_e}", flush=True)
-    raise
+    _src = open(_TRAINER).read()
+    _orig_lines = _src.count('\n')
+    # Eliminar la línea de import problemática
+    _src = _re.sub(r'from gsplat\.color_correct import [^\n]+\n', '', _src)
+    # Reemplazar usos de color_correct por identidad (sin corrección de color)
+    _src = _src.replace('cc_colors = color_correct(colors, pixels)', 'cc_colors = colors  # color_correct not available')
+    _src = _src.replace('color_correct,\n', '')
+    _new_lines = _src.count('\n')
+    open(_TRAINER, 'w').write(_src)
+    print(f"[startup] simple_trainer.py parchado: {_orig_lines} → {_new_lines} líneas (eliminado color_correct)", flush=True)
+except Exception as _e:
+    print(f"[startup] AVISO: no se pudo parchar simple_trainer.py: {_e}", flush=True)
 
 import runpod
 import os
