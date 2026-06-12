@@ -62,10 +62,12 @@ RUN cd /tmp/opensplat && mkdir build && cd build && \
     rm -rf /tmp/opensplat /tmp/opensplat.tar.gz && \
     echo "OpenSplat binary OK"
 
-# Archivos del pipeline
+# Archivos del pipeline — ARG CACHEBUST invalida este layer en cada build
+ARG CACHEBUST=2026-06-12-v5
 COPY docker/process_splat.sh /opt/process_splat.sh
 COPY docker/handler.py /opt/handler.py
-RUN chmod +x /opt/process_splat.sh
+RUN chmod +x /opt/process_splat.sh && \
+    echo "Script version: $(head -4 /opt/process_splat.sh | tail -1)"
 
 WORKDIR /opt
 CMD ["python3", "/opt/handler.py"]
