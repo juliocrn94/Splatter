@@ -3,11 +3,13 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 // Mensajes de error legibles para el operador
 const ERROR_MESSAGES: Record<string, string> = {
-  COLMAP_FAILED:   'No se pudo reconstruir la escena. Intenta grabar con mejor iluminación y movimiento más lento.',
-  OOM:             'El video tiene demasiados detalles para el modo estándar. Usa modo alta calidad o graba en secciones.',
-  TIMEOUT:         'El procesamiento tardó demasiado. Intenta con un video más corto (máx 5 minutos).',
-  FFMPEG_FAILED:   'El archivo de video está dañado o en un formato no compatible.',
-  DEFAULT:         'Ocurrió un error durante el procesamiento. Intenta de nuevo.',
+  COLMAP_FAILED:     'No se pudo reconstruir la escena. Intenta grabar con mejor iluminación y movimiento más lento.',
+  OOM:               'El video tiene demasiados detalles para el modo estándar. Usa modo alta calidad o graba en secciones.',
+  TIMEOUT:           'El procesamiento tardó demasiado. Intenta con un video más corto (máx 5 minutos).',
+  FFMPEG_FAILED:     'El archivo de video está dañado o en un formato no compatible.',
+  OPENSPLAT_FAILED:  'El entrenamiento del splat falló. Intenta reprocesar en alta calidad.',
+  PIPELINE_FAILED:   'Error interno del pipeline. El equipo fue notificado.',
+  DEFAULT:           'Ocurrió un error durante el procesamiento. Intenta de nuevo.',
 }
 
 function getErrorMessage(code?: string): string {

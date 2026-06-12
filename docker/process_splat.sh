@@ -1,6 +1,6 @@
 #!/bin/bash
 # Splatter — Pipeline: video → .ply + .spz
-# Uso: /opt/process_splat.sh <video_path> <project_id> [standard|hq]
+# Uso: /opt/process_splat.sh <video_path> <project_id> [standard|hq] [sift|superpoint] [opensplat|gsplat]
 # Corre con cwd = /tmp/jobs/{project_id}
 
 set -euo pipefail
@@ -8,18 +8,21 @@ set -euo pipefail
 VIDEO=$1
 PROJECT=${2:-"proyecto"}
 QUALITY=${3:-"standard"}
-# 150 frames es suficiente para reconstruir una habitación con COLMAP.
-# 400 frames → ~20GB RAM en feature extraction → OOM en el contenedor RunPod.
+FEATURE_EXTRACTOR=${4:-"sift"}
+TRAINER=${5:-"opensplat"}
+SKIP_COLMAP_MAPPER=0
+
+# 150 frames es el cap seguro para COLMAP en contenedores RunPod con 16-24GB RAM.
+# 400 frames → ~20GB RAM en feature extraction → OOM.
+# Usamos fps=2+mpdecimate para seleccionar los mejores 150 frames del pool.
 MAX_FRAMES=150
 
 if [ -z "$VIDEO" ] || [ -z "$PROJECT" ]; then
-  echo "Uso: $0 <video> <project_id> [standard|hq]"
+  echo "Uso: $0 <video> <project_id> [standard|hq] [sift|superpoint] [opensplat|gsplat]"
   exit 1
 fi
 
 # OpenSplat busca las imágenes en <proyecto>/images/ — el dir DEBE llamarse "images".
-# Pasar ./sparse/0 como proyecto y tener los frames en ./frames hace que OpenSplat
-# no encuentre las imágenes → cvtColor(!_src.empty()) crash.
 FRAMES_DIR="./images"
 SPARSE_DIR="./sparse"
 PLY_OUT="./${PROJECT}.ply"
@@ -32,17 +35,19 @@ export QT_QPA_PLATFORM=offscreen
 mkdir -p "$FRAMES_DIR" "$SPARSE_DIR"
 
 echo "=== Splatter pipeline ==="
-echo "Video:    $VIDEO"
-echo "Proyecto: $PROJECT"
-echo "Calidad:  $QUALITY"
+echo "Video:              $VIDEO"
+echo "Proyecto:           $PROJECT"
+echo "Calidad:            $QUALITY"
+echo "Feature extractor:  $FEATURE_EXTRACTOR"
+echo "Trainer:            $TRAINER"
 echo ""
 
 # ─── Paso 1: Extraer frames ──────────────────────────────────────────────────
 echo "[1/4] Extrayendo frames del video..."
-# fps=1: con videos de 3-5 min genera 180-300 frames → submuestra a 150.
-# fps=2 generaba 360-600 frames → demasiados para la RAM del contenedor RunPod.
+# fps=2+mpdecimate: captura 2fps y descarta duplicados visuales.
+# Genera 2x más candidatos que fps=1 → mejor cobertura espacial tras submuestreo.
 ffmpeg -i "$VIDEO" \
-  -vf "fps=1" \
+  -vf "fps=2,mpdecimate" \
   -qscale:v 2 \
   "$FRAMES_DIR/frame_%04d.jpg" \
   -hide_banner -loglevel error
@@ -55,13 +60,59 @@ if [ "$FRAME_COUNT" -lt 10 ]; then
   exit 1
 fi
 
-# ─── Cap de frames: máximo 400 en modo standard ──────────────────────────────
+# ─── Filtro de blur ──────────────────────────────────────────────────────────
+# Frames borrosos destruyen la extracción SIFT → fallos de reconstrucción COLMAP.
+echo "  → Filtrando frames borrosos..."
+BLUR_REMOVED=0
+
+# blurdetect: 0.0 (nítido) → 1.0 (borroso). Umbral 60% elimina el peor tercio.
+BLUR_MAX=60
+
+HAS_BLURDETECT=$(ffmpeg -filters 2>/dev/null | grep -c "^ *blurdetect" || echo 0)
+
+if [ "$HAS_BLURDETECT" -gt 0 ]; then
+  for f in "$FRAMES_DIR/"*.jpg; do
+    SCORE=$(ffmpeg -i "$f" \
+      -vf "blurdetect,metadata=print:file=-" \
+      -frames:v 1 -f null - 2>/dev/null \
+      | awk -F= '/lavfi\.blur=/{printf "%d", $2 * 100; exit}')
+    SCORE=${SCORE:-0}
+    if [ "${SCORE:-0}" -ge "$BLUR_MAX" ] 2>/dev/null; then
+      rm -f "$f"
+      BLUR_REMOVED=$(( BLUR_REMOVED + 1 ))
+    fi
+  done
+  echo "  → $BLUR_REMOVED frames borrosos eliminados"
+else
+  echo "  → AVISO: blurdetect no disponible en este ffmpeg — filtro de blur omitido"
+fi
+
+FRAME_COUNT=$(find "$FRAMES_DIR" -name "*.jpg" | wc -l | tr -d ' ')
+echo "  → $FRAME_COUNT frames útiles"
+
+if [ "$FRAME_COUNT" -lt 10 ]; then
+  echo "ERROR: Muy pocos frames tras filtro ($FRAME_COUNT). El video puede estar sobreexpuesto o muy borroso."
+  exit 1
+fi
+
+# ─── Normalización de exposición ─────────────────────────────────────────────
+# Reduce variaciones de brillo entre frames — mejora matching SIFT en interiores.
+echo "  → Normalizando exposición entre frames..."
+NORM_ERRORS=0
+for f in "$FRAMES_DIR/"*.jpg; do
+  if ! ffmpeg -i "$f" -vf "histeq=strength=0.15:intensity=0.15" -y "${f}.eq.jpg" 2>/dev/null; then
+    NORM_ERRORS=$(( NORM_ERRORS + 1 ))
+  else
+    mv "${f}.eq.jpg" "$f"
+  fi
+done
+[ "$NORM_ERRORS" -gt 0 ] && echo "  → AVISO: $NORM_ERRORS frames no pudieron normalizarse (histeq no soportado?)" || echo "  → Normalización completada"
+
+# ─── Cap de frames: máximo MAX_FRAMES en modo standard ───────────────────────
 if [ "$QUALITY" = "standard" ] && [ "$FRAME_COUNT" -gt "$MAX_FRAMES" ]; then
   echo "  → Modo standard: submuestreando de $FRAME_COUNT a $MAX_FRAMES frames..."
-  # División techo: STEP >= 2 siempre que FRAME_COUNT > MAX_FRAMES
   STEP=$(( (FRAME_COUNT + MAX_FRAMES - 1) / MAX_FRAMES ))
   i=0
-  # nullglob evita que el glob se expanda literalmente si no hay archivos
   shopt -s nullglob
   for f in "$FRAMES_DIR/"*.jpg; do
     if [ $(( i % STEP )) -ne 0 ]; then
@@ -74,57 +125,107 @@ if [ "$QUALITY" = "standard" ] && [ "$FRAME_COUNT" -gt "$MAX_FRAMES" ]; then
   echo "  → $FRAME_COUNT frames seleccionados (step=$STEP)"
 fi
 
-# ─── Paso 2: COLMAP feature extraction ───────────────────────────────────────
-echo "[2/4] Extrayendo features (COLMAP)..."
-# max_image_size=1600: COLMAP escala imágenes antes de SIFT → ~60% menos RAM por frame.
-# max_num_features=4096: suficiente para Gaussian Splatting, reduce RAM de descriptores.
-# num_threads=2: limita paralelismo CPU para evitar picos de RAM simultáneos.
-# use_gpu=0 OBLIGATORIO: el SIFT en GPU de COLMAP usa OpenGL (SiftGPU), que necesita
-# un contexto de display. En contenedores serverless headless no existe → crashea con
-# "OpenGLContextManager Aborted (core dumped)". El SIFT en CPU no usa OpenGL y es
-# estable. Con 150 frames a max 1600px el costo de CPU es aceptable.
-colmap feature_extractor \
-    --database_path "./colmap.db" \
-    --image_path "$FRAMES_DIR" \
-    --ImageReader.camera_model OPENCV \
-    --SiftExtraction.use_gpu 0 \
-    --SiftExtraction.max_image_size 1600 \
-    --SiftExtraction.max_num_features 4096 \
-    --SiftExtraction.num_threads 2
+# ─── Paso 2: Extracción de features ──────────────────────────────────────────
+echo "[2/4] Extrayendo features..."
 
-# ─── Paso 3: COLMAP matching + mapper ────────────────────────────────────────
-echo "[3/4] Estimando posiciones de cámara (COLMAP)..."
-# sequential_matcher es el correcto para frames de video en secuencia (frames
-# consecutivos se solapan). vocab_tree_matcher es para colecciones desordenadas
-# y además segfaultea en esta build de COLMAP. SiftMatching.use_gpu=0 evita el
-# crash de OpenGL en headless.
-colmap sequential_matcher \
-  --database_path "./colmap.db" \
-  --SiftMatching.use_gpu 0
+if [ "$FEATURE_EXTRACTOR" = "superpoint" ] && [ -d "/opt/hloc" ]; then
+  echo "  → Usando SuperPoint+LightGlue (hloc)"
+  python3 -m hloc.extractors.superpoint \
+    --image_dir "$FRAMES_DIR" \
+    --export_dir "./hloc_features" 2>&1 | tail -5
 
-colmap mapper \
-  --database_path "./colmap.db" \
-  --image_path "$FRAMES_DIR" \
-  --output_path "$SPARSE_DIR"
+  python3 -m hloc.matchers.lightglue \
+    --features_dir "./hloc_features" \
+    --pairs_path "./hloc_pairs.txt" \
+    --match_path "./hloc_matches.h5" 2>&1 | tail -5
 
-if [ ! -d "$SPARSE_DIR/0" ]; then
-  echo "ERROR: COLMAP no pudo reconstruir la escena."
-  echo "Causas posibles: poca superposición entre frames, iluminación inconsistente, video muy corto."
-  exit 1
+  python3 -m hloc.pipelines.colmap.sfm \
+    --sfm_dir "$SPARSE_DIR" \
+    --image_dir "$FRAMES_DIR" \
+    --features "./hloc_features" \
+    --matches "./hloc_matches.h5" \
+    --pairs "./hloc_pairs.txt" 2>&1 | tail -20
+
+  # Si hloc generó el sparse, saltar al paso de OpenSplat
+  if [ -d "$SPARSE_DIR/0" ]; then
+    echo "  → Reconstrucción con SuperPoint completada"
+    SKIP_COLMAP_MAPPER=1
+  else
+    echo "  → AVISO: hloc no generó sparse/0 — cayendo a SIFT"
+    FEATURE_EXTRACTOR="sift"
+    SKIP_COLMAP_MAPPER=0
+  fi
+else
+  [ "$FEATURE_EXTRACTOR" = "superpoint" ] && echo "  → AVISO: SuperPoint solicitado pero hloc no instalado — usando SIFT"
+  FEATURE_EXTRACTOR="sift"
+  SKIP_COLMAP_MAPPER=0
 fi
 
-# ─── Paso 4: OpenSplat ───────────────────────────────────────────────────────
-echo "[4/4] Entrenando Gaussian Splat (OpenSplat)..."
+if [ "$FEATURE_EXTRACTOR" = "sift" ]; then
+  echo "  → Usando SIFT (COLMAP)"
+  # max_image_size=2000: mejor resolución de features que 1600, sin OOM a 150 frames.
+  # max_num_features=8192: más puntos por frame → mejor matching en interiores con paredes lisas.
+  # use_gpu=0 OBLIGATORIO: SIFT GPU de COLMAP usa SiftGPU/OpenGL → crash en headless serverless.
+  colmap feature_extractor \
+      --database_path "./colmap.db" \
+      --image_path "$FRAMES_DIR" \
+      --ImageReader.camera_model OPENCV \
+      --SiftExtraction.use_gpu 0 \
+      --SiftExtraction.max_image_size 2000 \
+      --SiftExtraction.max_num_features 8192 \
+      --SiftExtraction.num_threads 4
+fi
+
+# ─── Paso 3: COLMAP matching + mapper ────────────────────────────────────────
+if [ "${SKIP_COLMAP_MAPPER:-0}" = "0" ]; then
+  echo "[3/4] Estimando posiciones de cámara (COLMAP)..."
+
+  # sequential_matcher es el correcto para frames de video en secuencia.
+  # SiftMatching.use_gpu=0 evita el crash de OpenGL en headless.
+  colmap sequential_matcher \
+    --database_path "./colmap.db" \
+    --SiftMatching.use_gpu 0
+
+  colmap mapper \
+    --database_path "./colmap.db" \
+    --image_path "$FRAMES_DIR" \
+    --output_path "$SPARSE_DIR"
+
+  if [ ! -d "$SPARSE_DIR/0" ]; then
+    echo "ERROR: COLMAP no pudo reconstruir la escena."
+    echo "Causas posibles: poca superposición entre frames, iluminación inconsistente, video muy corto."
+    exit 1
+  fi
+else
+  echo "[3/4] Reconstrucción ya completada por hloc — saltando mapper COLMAP"
+fi
+
+# ─── Paso 4: Trainer de Gaussian Splatting ───────────────────────────────────
+echo "[4/4] Entrenando Gaussian Splat (trainer=$TRAINER)..."
 ITERATIONS=30000
 [ "$QUALITY" = "hq" ] && ITERATIONS=50000
 
-# OpenSplat recibe el PROYECTO raíz (cwd = job_dir), que contiene images/ y sparse/0/.
-# Internamente lee sparse/0/*.bin y carga las imágenes desde images/.
-opensplat "." \
-  -n $ITERATIONS \
-  -o "$PLY_OUT"
+if [ "$TRAINER" = "gsplat" ] && command -v gsplat >/dev/null 2>&1; then
+  echo "  → Usando gsplat (antialiased, experimental)"
+  gsplat "." \
+    --iterations $ITERATIONS \
+    --output "$PLY_OUT" 2>&1 | tail -20 || true
 
-# Validar que el .ply tenga contenido (OpenSplat puede crear el archivo y luego crashear)
+  if [ ! -f "$PLY_OUT" ]; then
+    echo "  → AVISO: gsplat no generó .ply — cayendo a OpenSplat"
+    TRAINER="opensplat"
+  fi
+fi
+
+if [ "$TRAINER" = "opensplat" ] || [ ! -f "$PLY_OUT" ]; then
+  [ "$TRAINER" != "opensplat" ] && echo "  → gsplat no disponible o falló — usando OpenSplat"
+  # OpenSplat recibe el proyecto raíz (cwd = job_dir), que contiene images/ y sparse/0/.
+  opensplat "." \
+    -n $ITERATIONS \
+    -o "$PLY_OUT"
+fi
+
+# Validar que el .ply tenga contenido
 PLY_SIZE=$(stat -c%s "$PLY_OUT" 2>/dev/null || echo 0)
 if [ "$PLY_SIZE" -lt 1048576 ]; then
   echo "ERROR: OpenSplat generó un .ply inválido o vacío (${PLY_SIZE} bytes)"
@@ -133,7 +234,7 @@ fi
 echo "  → .ply listo: $PLY_OUT ($(du -sh "$PLY_OUT" | cut -f1))"
 
 # ─── Convertir a .spz ────────────────────────────────────────────────────────
-# El binario se llama ply_to_spz (nianticlabs/spz, C++)
+# El binario se llama ply_to_spz (nianticlabs/spz, C++, v2 forzado para compatibilidad)
 if command -v ply_to_spz >/dev/null 2>&1; then
   ply_to_spz "$PLY_OUT" "$SPZ_OUT"
   echo "  → .spz listo: $SPZ_OUT ($(du -sh "$SPZ_OUT" | cut -f1))"
@@ -143,3 +244,4 @@ fi
 
 echo ""
 echo "=== Pipeline completado ==="
+echo "frames=$FRAME_COUNT quality=$QUALITY trainer=$TRAINER feature_extractor=$FEATURE_EXTRACTOR"

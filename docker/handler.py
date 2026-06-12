@@ -45,11 +45,13 @@ def upload_file(file_path: str, upload_url: str) -> None:
 
 def parse_error_code(stderr: str) -> str:
     s = stderr.lower()
-    if "colmap no pudo reconstruir" in s or "colmap failed" in s:
+    if "colmap no pudo reconstruir" in s or "colmap failed" in s or "sparse/0" in s:
         return "COLMAP_FAILED"
-    if "out of memory" in s or "oom" in s or "killed" in s:
+    if "out of memory" in s or "oom" in s or "killed" in s or "cannot allocate" in s:
         return "OOM"
-    if "corrupt" in s or "invalid data" in s:
+    if "ply inválido" in s or "ply invalido" in s or "opensplat" in s and "error" in s:
+        return "OPENSPLAT_FAILED"
+    if "muy pocos frames" in s or "video puede estar corrupto" in s or "invalid data" in s or "corrupt" in s:
         return "FFMPEG_FAILED"
     return "PIPELINE_FAILED"
 
