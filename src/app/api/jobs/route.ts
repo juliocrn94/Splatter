@@ -63,7 +63,12 @@ export async function POST(req: NextRequest) {
   // Primer video como video_url principal para compatibilidad con el worker actual
   const primaryVideoUrl = videoDownloadUrls[0]
 
-  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook`
+  // El secret va como query param porque RunPod no soporta headers custom en webhooks.
+  // El handler verifica ?secret= O el header x-runpod-secret (compatibilidad con ambos).
+  const webhookBase = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook`
+  const webhookUrl = process.env.RUNPOD_WEBHOOK_SECRET
+    ? `${webhookBase}?secret=${encodeURIComponent(process.env.RUNPOD_WEBHOOK_SECRET)}`
+    : webhookBase
 
   const runpodRes = await fetch(
     `https://api.runpod.ai/v2/${process.env.RUNPOD_ENDPOINT_ID}/run`,
