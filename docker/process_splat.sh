@@ -44,10 +44,11 @@ echo ""
 
 # ─── Paso 1: Extraer frames ──────────────────────────────────────────────────
 echo "[1/4] Extrayendo frames del video..."
-# fps=2+mpdecimate: captura 2fps y descarta duplicados visuales.
-# Genera 2x más candidatos que fps=1 → mejor cobertura espacial tras submuestreo.
+# fps=2 (sin mpdecimate): mantiene frames equidistantes cada 0.5s.
+# mpdecimate eliminaba frames en videos lentos → dejaba huecos temporales grandes
+# que sequential_matcher no podía enlazar → "failed to create sparse model".
 ffmpeg -i "$VIDEO" \
-  -vf "fps=2,mpdecimate" \
+  -vf "fps=2" \
   -qscale:v 2 \
   "$FRAMES_DIR/frame_%04d.jpg" \
   -hide_banner -loglevel error
@@ -68,16 +69,20 @@ BLUR_REMOVED=0
 # blurdetect: 0.0 (nítido) → 1.0 (borroso). Umbral 60% elimina el peor tercio.
 BLUR_MAX=60
 
-HAS_BLURDETECT=$(ffmpeg -filters 2>/dev/null | grep -c "^ *blurdetect" || echo 0)
+HAS_BLURDETECT=$(ffmpeg -filters 2>/dev/null | grep -c "^ *blurdetect" || true)
+HAS_BLURDETECT=${HAS_BLURDETECT:-0}
 
 if [ "$HAS_BLURDETECT" -gt 0 ]; then
   for f in "$FRAMES_DIR/"*.jpg; do
-    SCORE=$(ffmpeg -i "$f" \
+    RAW_SCORE=$(ffmpeg -i "$f" \
       -vf "blurdetect,metadata=print:file=-" \
       -frames:v 1 -f null - 2>/dev/null \
-      | awk -F= '/lavfi\.blur=/{printf "%d", $2 * 100; exit}')
+      | awk -F= '/lavfi\.blur=/{v=$2+0; printf "%d", v*100; exit}')
+    # Sanear: extraer solo los primeros dígitos (protección contra embedded newlines)
+    SCORE=$(printf '%s' "${RAW_SCORE:-}" | grep -oE '^[0-9]+' || true)
     SCORE=${SCORE:-0}
-    if [ "${SCORE:-0}" -ge "$BLUR_MAX" ] 2>/dev/null; then
+    # Usar aritmética bash en lugar de [ -ge ] para evitar el bug de integer expected
+    if (( SCORE >= BLUR_MAX )); then
       rm -f "$f"
       BLUR_REMOVED=$(( BLUR_REMOVED + 1 ))
     fi
@@ -180,11 +185,29 @@ fi
 if [ "${SKIP_COLMAP_MAPPER:-0}" = "0" ]; then
   echo "[3/4] Estimando posiciones de cámara (COLMAP)..."
 
-  # sequential_matcher es el correcto para frames de video en secuencia.
+  # sequential_matcher con overlap=15: busca matches en los 15 frames adyacentes
+  # (default=5 era insuficiente para fps=2 con submuestreo a 150 frames).
   # SiftMatching.use_gpu=0 evita el crash de OpenGL en headless.
   colmap sequential_matcher \
     --database_path "./colmap.db" \
-    --SiftMatching.use_gpu 0
+    --SiftMatching.use_gpu 0 \
+    --SequentialMatching.overlap 15
+
+  # Diagnóstico: ver cuántos image pairs se encontraron antes del mapper
+  MATCH_COUNT=$(python3 -c "
+import sqlite3, sys
+try:
+    conn = sqlite3.connect('./colmap.db')
+    c = conn.cursor()
+    c.execute('SELECT COUNT(*) FROM matches WHERE rows > 0')
+    print(c.fetchone()[0])
+    conn.close()
+except: print(0)
+" 2>/dev/null || echo 0)
+  echo "  → $MATCH_COUNT pares con matches (sequential_matcher)"
+  if [ "$MATCH_COUNT" -lt 20 ]; then
+    echo "  → AVISO: muy pocos matches. El video puede tener poco movimiento o mala iluminación."
+  fi
 
   colmap mapper \
     --database_path "./colmap.db" \
